@@ -39,7 +39,9 @@ Terminal-first web workbench, developed in this repository on dev.
 - SSH parsing accepts a config alias, user@host, or ssh with -p/-i/-J.
   Arguments go directly to OpenSSH; arbitrary remote commands are rejected.
 - ssh.ts installs a versioned API backend under ~/.remotepad2/backend on the
-  target. Target prerequisites are POSIX/OpenSSH, Node.js 22+ and pnpm in PATH.
+  target. Target prerequisites are POSIX/OpenSSH and Node.js 22+ with npm. Missing or
+  mismatched pnpm is bootstrapped at the version in package.json into
+  ~/.remotepad2/tools, without changing global tools or shell configuration.
   A persistent private Unix-socket backend owns remote PTYs; SSH is transport.
 - The worker exposes files/navigation/sessions/Codex on the target. Browser
   URLs and localStorage are machine-scoped. Local SSH settings stay local.

@@ -60,15 +60,26 @@ async function connect(input: string) {
   await execSsh(input, `
     set -eu
     umask 077
+    export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:/opt/homebrew/bin:/usr/local/bin:$PATH"
     command -v node >/dev/null || { echo 'Node.js 22+ is required in non-interactive SSH PATH.' >&2; exit 1; }
     node -e 'if(Number(process.versions.node.split(".")[0])<22)process.exit(1)' || { echo 'Node.js 22+ is required.' >&2; exit 1; }
-    command -v pnpm >/dev/null || { echo 'pnpm is required in non-interactive SSH PATH.' >&2; exit 1; }
     mkdir -p "$HOME/.remotepad2/backend"
     if ! test -f ${install}/.ready; then
       stage=$(mktemp -d "$HOME/.remotepad2/backend/.install.XXXXXXXX")
       trap 'rm -rf "$stage"' EXIT
       tar -xf - -C "$stage"
-      (cd "$stage" && pnpm --filter @remotepad2/server... install --frozen-lockfile) >&2
+      pnpm_version=$(node -e 'const p=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")).packageManager;if(!/^pnpm@[0-9]+[.][0-9]+[.][0-9]+$/.test(p))throw Error("Invalid pnpm version");console.log(p.slice(5))' "$stage/package.json")
+      tools="$HOME/.remotepad2/tools/pnpm-$pnpm_version"
+      if command -v pnpm >/dev/null && test "$(pnpm --version)" = "$pnpm_version"; then
+        pnpm_bin=$(command -v pnpm)
+      else
+        command -v npm >/dev/null || { echo 'npm is needed to prepare the RemotePad2 package manager.' >&2; exit 1; }
+        if ! test -f "$tools/node_modules/pnpm/bin/pnpm.cjs"; then
+          npm install --prefix "$tools" --no-audit --no-fund --ignore-scripts "pnpm@$pnpm_version" >&2
+        fi
+        pnpm_bin="$tools/node_modules/pnpm/bin/pnpm.cjs"
+      fi
+      (cd "$stage" && "$pnpm_bin" --filter @remotepad2/server... install --frozen-lockfile) >&2
       touch "$stage/.ready"
       node -e 'require("node:fs").renameSync(process.argv[1],process.argv[2])' "$stage" ${install} || test -f ${install}/.ready
     else

@@ -67,7 +67,10 @@ The connection uses your existing OpenSSH keys and known hosts. Authenticate
 and verify a new host in Terminal first if needed. The first connection
 uploads the API source and installs locked dependencies under
 ~/.remotepad2/backend on the remote machine. That machine needs OpenSSH Unix
-socket forwarding, a POSIX shell, Node.js 22+ and pnpm in its non-interactive PATH.
+socket forwarding, a POSIX shell and Node.js 22+ with npm in its non-interactive PATH.
+RemotePad2 reuses a matching pnpm or prepares its pinned version under
+~/.remotepad2/tools automatically. Global packages and shell startup files
+are not modified.
 
 The backend runs as your SSH user on a private Unix socket and survives a
 transport disconnect. Files, terminals and Codex metadata belong to the selected
