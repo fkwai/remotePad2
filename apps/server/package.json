@@ -1,0 +1,22 @@
+{
+  "name": "@remotepad2/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "node scripts/prepare-pty.mjs"
+  },
+  "dependencies": {
+    "@remotepad2/protocol": "workspace:*",
+    "fastify": "^5.6.0",
+    "@fastify/websocket": "^11.2.0",
+    "@fastify/static": "^8.2.0",
+    "node-pty": "^1.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.5",
+    "@types/ws": "^8.18.1"
+  }
+}

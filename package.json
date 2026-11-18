@@ -1,0 +1,20 @@
+{
+  "name": "remotepad2",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.15.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @remotepad2/server --filter @remotepad2/web dev",
+    "build": "pnpm typecheck && pnpm --filter @remotepad2/web build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "start": "pnpm --filter @remotepad2/server start"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "@types/node": "^22.18.0"
+  }
+}

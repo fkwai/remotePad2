@@ -1,0 +1,13 @@
+:root { font-family: system-ui, sans-serif; color: #dee3e7; background: #151719; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+#app { height: 100dvh; display: grid; grid-template-rows: 42px minmax(0, 1fr) 30px; }
+header { display: flex; justify-content: space-between; align-items: center; padding: 0 16px; border-bottom: 1px solid #2c3034; font-size: 13px; }
+header strong { font-weight: 600; letter-spacing: -.3px; }
+header strong span { color: #a6d3b4; margin-left: 2px; }
+#host { color: #a7afb6; }
+main { padding: 12px 8px 4px 16px; overflow: hidden; min-width: 0; }
+footer { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; color: #a7afb6; font-size: 11px; border-top: 1px solid #2c3034; }
+#status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+button { color: #a6d3b4; background: none; border: 0; cursor: pointer; font: inherit; }
+button:hover { text-decoration: underline; }
