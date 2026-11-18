@@ -5,6 +5,7 @@ import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import staticFiles from '@fastify/static';
 import { existsSync } from 'node:fs';
+import { registerFiles } from './files.ts';
 import { registerTerminal } from './terminal.ts';
 
 const app = Fastify({ logger: true });
@@ -21,6 +22,7 @@ app.addHook('onRequest', async (request, reply) => {
 });
 app.get('/api/health', async () => ({ ok: true, hostname: os.hostname() }));
 await registerTerminal(app);
+await registerFiles(app);
 const web = fileURLToPath(new URL('../../web/dist/', import.meta.url));
 if (existsSync(path.join(web, 'index.html'))) await app.register(staticFiles, { root: web });
 await app.listen({ host: '127.0.0.1', port });

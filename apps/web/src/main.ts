@@ -1,61 +1,148 @@
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import type { TerminalEvent, TerminalInput } from '@remotepad2/protocol';
+import type { FileContent, SessionInfo } from '@remotepad2/protocol';
+import { api, button } from './api';
+import { TerminalPanel } from './components/terminal';
+import { EditorPanel } from './components/editor';
+import { FilesIndex } from './components/files';
+import { SessionsIndex } from './components/sessions';
 import '@xterm/xterm/css/xterm.css';
 import './style.css';
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <header><strong>RemotePad<span>2</span></strong><div id="host">Local terminal</div></header>
-  <main id="terminal" aria-label="Terminal"></main>
-  <footer><span id="status" role="status">Connecting…</span><button id="restart" hidden>New terminal</button></footer>`;
-const status = document.querySelector<HTMLSpanElement>('#status')!;
-const host = document.querySelector<HTMLDivElement>('#host')!;
-const restart = document.querySelector<HTMLButtonElement>('#restart')!;
-const container = document.querySelector<HTMLElement>('#terminal')!;
-const terminal = new Terminal({
-  cursorBlink: true, fontSize: 14, fontFamily: 'Menlo, Consolas, monospace',
-  scrollback: 5000, theme: { background: '#151719', foreground: '#dee3e7', cursor: '#a6d3b4' },
+document.querySelector('#app')!.innerHTML = `
+<header><strong>RemotePad<span>2</span></strong><nav id="controls"></nav><div id="host"></div></header>
+<main id="workbench"><aside id="indexes"></aside><section id="editor" class="panel" hidden>
+<div class="tabs" id="editor-tabs"></div><div id="editor-content" class="panel-content"></div></section>
+<section id="terminal" class="panel"><div class="tabs" id="terminal-tabs"></div><div id="terminal-content" class="panel-content"></div></section></main>
+<footer id="status" role="status">Ready</footer>`;
+const get = (id: string) => document.getElementById(id)!;
+const status = (message: string) => { get('status').textContent = message; };
+const terminals = new Map<string, { info: SessionInfo; panel: TerminalPanel }>();
+const editors = new Map<string, EditorPanel>();
+let activeSession = '';
+let activeFile = '';
+let sessionList: SessionInfo[] = [];
+const visibility: Record<string, boolean> = { files: false, sessions: true, editor: false, terminal: true };
+try {
+  const saved = JSON.parse(localStorage.getItem('rp2.visibility') || '{}');
+  for (const key of Object.keys(visibility)) if (typeof saved?.[key] === 'boolean') visibility[key] = saved[key];
+} catch { /* A malformed layout starts with the default components. */ }
+function layout() {
+  files.element.hidden = !visibility.files;
+  sessions.element.hidden = !visibility.sessions;
+  get('indexes').hidden = !visibility.files && !visibility.sessions;
+  get('editor').hidden = !visibility.editor;
+  get('terminal').hidden = !visibility.terminal;
+  get('workbench').classList.toggle('has-index', visibility.files || visibility.sessions);
+  for (const control of Array.from(get('controls').querySelectorAll('button'))) control.setAttribute('aria-pressed', String(Boolean(visibility[control.dataset.component!])));
+  localStorage.setItem('rp2.visibility', JSON.stringify(visibility));
+}
+for (const [id, label] of [['files', 'Files Index'], ['sessions', 'Sessions Index'], ['editor', 'Editor'], ['terminal', 'Terminal']]) {
+  const control = button(label, () => { visibility[id] = !visibility[id]; layout(); });
+  control.dataset.component = id;
+  get('controls').append(control);
+}
+function renderTerminals() {
+  const tabs = [...terminals].map(([id, { info, panel }]) => {
+    panel.element.hidden = id !== activeSession;
+    const tab = document.createElement('div');
+    tab.className = 'tab' + (id === activeSession ? ' active' : '');
+    tab.append(button(info.name + ' ' + id.slice(0, 6), () => openSession(info)), button('×', () => void closeSession(id), 'Close tab and end session'));
+    return tab;
+  });
+  get('terminal-tabs').replaceChildren(...tabs, button('+', () => void createSession(), 'New shell'));
+  sessions.render(sessionList, activeSession);
+}
+function openSession(info: SessionInfo) {
+  activeSession = info.id;
+  if (!terminals.has(info.id)) {
+    const panel = new TerminalPanel(info.id, (message) => { if (activeSession === info.id) status(message); });
+    terminals.set(info.id, { info, panel });
+    get('terminal-content').append(panel.element);
+  }
+  visibility.terminal = true;
+  localStorage.setItem('rp2.session', info.id);
+  renderTerminals();
+  layout();
+}
+async function closeSession(id: string) {
+  try {
+    await api('/api/sessions/' + id, { method: 'DELETE' });
+    const terminal = terminals.get(id);
+    terminal?.panel.dispose();
+    terminal?.panel.element.remove();
+    terminals.delete(id);
+    sessionList = sessionList.filter((s) => s.id !== id);
+    if (id === activeSession) activeSession = [...terminals.keys()].at(-1) || '';
+    localStorage.setItem('rp2.session', activeSession);
+    renderTerminals();
+  } catch (error) { status((error as Error).message); }
+}
+async function createSession() {
+  try { const info = await api<SessionInfo>('/api/sessions', { method: 'POST' }); await refresh(); openSession(info); }
+  catch (error) { status((error as Error).message); }
+}
+function renderEditors() {
+  get('editor-tabs').replaceChildren(...[...editors].map(([path, editor]) => {
+    editor.element.hidden = path !== activeFile;
+    const tab = document.createElement('div');
+    tab.className = 'tab' + (path === activeFile ? ' active' : '');
+    tab.append(button((editor.dirty ? '● ' : '') + path.split('/').pop(), () => { activeFile = path; renderEditors(); }, path),
+      button('×', () => {
+        if (editor.dirty && !confirm('Discard unsaved changes in ' + path + '?')) return;
+        editor.element.remove();
+        editors.delete(path);
+        if (activeFile === path) activeFile = [...editors.keys()].at(-1) || '';
+        renderEditors();
+      }, 'Close file'));
+    return tab;
+  }));
+}
+async function openFile(path: string) {
+  try {
+    if (!editors.has(path)) {
+      const data = await api<FileContent>('/api/file?path=' + encodeURIComponent(path));
+      const panel = new EditorPanel(data, renderEditors, status);
+      editors.set(path, panel);
+      get('editor-content').append(panel.element);
+    }
+    activeFile = path;
+    visibility.editor = true;
+    renderEditors();
+    layout();
+  } catch (error) { status((error as Error).message); }
+}
+const files = new FilesIndex((path) => void openFile(path), (path) => localStorage.setItem('rp2.directory', path));
+const sessions = new SessionsIndex(openSession, () => void createSession());
+get('indexes').append(files.element, sessions.element);
+async function refresh() {
+  const result = await api<{ sessions: SessionInfo[] }>('/api/sessions');
+  sessionList = result.sessions;
+  for (const [id, terminal] of terminals) {
+    const info = sessionList.find((s) => s.id === id);
+    if (info) terminal.info = info;
+    else {
+      terminal.panel.dispose();
+      terminal.panel.element.remove();
+      terminals.delete(id);
+      if (activeSession === id) activeSession = [...terminals.keys()].at(-1) || '';
+    }
+  }
+  renderTerminals();
+}
+async function start() {
+  try {
+    const health = await api<{ hostname: string }>('/api/health');
+    get('host').textContent = health.hostname;
+    await refresh();
+    const previous = sessionList.find((s) => s.id === localStorage.getItem('rp2.session'));
+    if (previous) openSession(previous);
+    else if (sessionList.length) openSession(sessionList[0]);
+    else await createSession();
+    layout();
+  } catch (error) { status((error as Error).message); }
+}
+window.addEventListener('beforeunload', (event) => {
+  if ([...editors.values()].some((editor) => editor.dirty)) { event.preventDefault(); event.returnValue = ''; }
 });
-const fit = new FitAddon();
-terminal.loadAddon(fit);
-terminal.open(container);
-let socket: WebSocket | undefined;
-let ended = false;
-function send(message: TerminalInput) {
-  if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
-}
-function resize() {
-  fit.fit();
-  send({ type: 'resize', cols: terminal.cols, rows: terminal.rows });
-}
-function connect() {
-  ended = false;
-  restart.hidden = true;
-  status.textContent = 'Connecting…';
-  socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/terminal`);
-  socket.onmessage = ({ data }) => {
-    const event = JSON.parse(data) as TerminalEvent;
-    if (event.type === 'output') terminal.write(event.data);
-    if (event.type === 'ready') {
-      host.textContent = event.hostname;
-      host.title = event.cwd;
-      status.textContent = event.cwd;
-      resize();
-      terminal.focus();
-    }
-    if (event.type === 'exit' || event.type === 'error') {
-      ended = true;
-      status.textContent = event.type === 'exit' ? `Shell exited (${event.code})` : event.message;
-    }
-  };
-  socket.onclose = () => {
-    if (!ended) status.textContent = 'Disconnected';
-    restart.hidden = false;
-  };
-  socket.onerror = () => { status.textContent = 'Could not connect to the terminal'; };
-}
-terminal.onData((data) => send({ type: 'input', data }));
-new ResizeObserver(resize).observe(container);
-restart.onclick = () => { terminal.reset(); connect(); };
-window.addEventListener('pagehide', () => socket?.close());
-connect();
+window.setInterval(() => { void refresh().catch(() => status('Backend unavailable')); }, 2500);
+layout();
+void start();

@@ -28,13 +28,28 @@ as the current OS user. It provides local access without an account system.
 - `apps/server` owns PTY processes and the HTTP/WebSocket transport.
 - `packages/protocol` defines messages shared by both sides.
 
-Each browser tab gets its own login shell in the user's home directory.
-Closing the tab or losing its connection ends that shell. “New terminal”
-starts a fresh shell after an exit or disconnect. Output is streamed with
-backpressure and retained in the browser's bounded scrollback.
+## Four components
 
-The initial skeleton contains terminal capability. File panels, SSH,
-Agent sessions and debugging will be added incrementally. Plugins should
-use backend capabilities and a shared execution-session identity so an
-editor, debugger, console and Agent can operate on the same live context.
-RemotePad2 provides the workbench and integrates existing Agent runtimes.
+- **Files Index** browses local directories and opens files in Editor.
+- **Sessions Index** selects existing shells or creates another.
+- **Editor** edits UTF-8 files with save/conflict detection and optional
+  Markdown or HTML rendering. Debug capability will be added later.
+- **Terminal** attaches to a backend-owned PTY. Agent CLIs can run here.
+
+Header toggles hide or show each area. Files and sessions open in their own
+Editor and Terminal tabs. The initial layout shows Sessions Index and Terminal.
+
+Shells survive refresh, browser closure and network loss while the backend
+remains running. Sessions Index can reopen them with bounded output replay.
+Closing a Terminal tab ends the process. Hiding an area keeps its tabs and
+processes. Exited sessions retain their output until the tab is closed.
+Backend restarts end sessions. Unsaved editor buffers are kept in browser
+memory, with a browser warning before leaving.
+
+The current Editor supports UTF-8 text up to 2 MB. Save checks the file's
+revision to catch external edits. Rendered Markdown and HTML run in a
+sandboxed iframe. Files Index currently lists regular files and directories.
+
+Files, sessions, editor and terminal views are separate modules. Future
+layout presets can compose these same components as an IDE or Agent Manager.
+Debugging and Agent-specific hooks will share explicit execution identities.
