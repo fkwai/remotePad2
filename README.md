@@ -37,7 +37,17 @@ as the current OS user. It provides local access without an account system.
 - **Terminal** attaches to a backend-owned PTY. Agent CLIs can run here.
 
 Header toggles hide or show each area. Files and sessions open in their own
-Editor and Terminal tabs. The initial layout shows Sessions Index and Terminal.
+Editor and Terminal tabs. The fixed layout has Files Index on the left, Sessions Index on the right,
+and Editor above Terminal in the center. All four areas are initially visible.
+
+Files Index offers an expandable tree, Favorites and Repos. Existing RemotePad
+pins are copied once into ~/.remotepad2/navigation.json and managed separately.
+
+Sessions Index also lists the latest 200 unarchived local Codex sessions. Click
+one to run `codex resume <id> --no-alt-screen` in its original directory using
+the installed CLI and its existing configuration. A running RemotePad2 session
+is reused on subsequent clicks. The index refresh button reloads Codex metadata.
+This opens a CLI session; it does not attach to an existing desktop app process.
 
 Shells survive refresh, browser closure and network loss while the backend
 remains running. Sessions Index can reopen them with bounded output replay.

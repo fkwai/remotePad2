@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import pty from 'node-pty';
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
+import { codexSessions } from './codex.ts';
 import type { SessionInfo, TerminalEvent } from '@remotepad2/protocol';
 
 interface Session {
@@ -23,13 +24,27 @@ export async function registerTerminal(app: FastifyInstance) {
     for (const session of sessions.values()) if (session.info.alive) session.process.kill();
   });
   app.get('/api/sessions', async () => ({ sessions: [...sessions.values()].map((s) => s.info) }));
-  app.post('/api/sessions', async () => {
-    const process = pty.spawn(os.userInfo().shell || '/bin/bash', ['-l'], {
-      name: 'xterm-256color', cols: 80, rows: 24, cwd: os.homedir(),
+  app.get('/api/codex/sessions', async (_req, reply) => {
+    try { return { sessions: codexSessions() }; }
+    catch (error) { return reply.code(503).send({ error: (error as Error).message }); }
+  });
+  app.post<{ Body: { codexId?: string } }>('/api/sessions', async (req, reply) => {
+    const codexId = req.body?.codexId;
+    const attached = codexId ? [...sessions.values()].find((session) => session.info.codexId === codexId && session.info.alive) : undefined;
+    if (attached) return attached.info;
+    const existing = codexId ? codexSessions().find((session) => session.id === codexId) : undefined;
+    if (codexId && !existing) return reply.code(404).send({ error: 'Codex session unavailable.' });
+    const cwd = existing?.cwd || os.homedir();
+    let process: pty.IPty;
+    try {
+      process = pty.spawn(existing ? 'codex' : os.userInfo().shell || '/bin/bash',
+        existing ? ['resume', existing.id, '--no-alt-screen'] : ['-l'], {
+      name: 'xterm-256color', cols: 80, rows: 24, cwd,
       env: { ...globalThis.process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
     });
+    } catch (error) { return reply.code(400).send({ error: (error as Error).message }); }
     const session: Session = {
-      info: { id: randomUUID(), name: 'Shell', cwd: os.homedir(), alive: true },
+      info: { id: randomUUID(), name: existing ? existing.title : 'Shell', cwd, codexId: existing?.id, alive: true },
       process, replay: '', clients: new Set(),
     };
     sessions.set(session.info.id, session);

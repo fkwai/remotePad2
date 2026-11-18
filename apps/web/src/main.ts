@@ -9,9 +9,9 @@ import './style.css';
 
 document.querySelector('#app')!.innerHTML = `
 <header><strong>RemotePad<span>2</span></strong><nav id="controls"></nav><div id="host"></div></header>
-<main id="workbench"><aside id="indexes"></aside><section id="editor" class="panel" hidden>
+<main id="workbench"><aside id="files-index"></aside><div id="workspace"><section id="editor" class="panel">
 <div class="tabs" id="editor-tabs"></div><div id="editor-content" class="panel-content"></div></section>
-<section id="terminal" class="panel"><div class="tabs" id="terminal-tabs"></div><div id="terminal-content" class="panel-content"></div></section></main>
+<section id="terminal" class="panel"><div class="tabs" id="terminal-tabs"></div><div id="terminal-content" class="panel-content"></div></section></div><aside id="sessions-index"></aside></main>
 <footer id="status" role="status">Ready</footer>`;
 const get = (id: string) => document.getElementById(id)!;
 const status = (message: string) => { get('status').textContent = message; };
@@ -20,20 +20,21 @@ const editors = new Map<string, EditorPanel>();
 let activeSession = '';
 let activeFile = '';
 let sessionList: SessionInfo[] = [];
-const visibility: Record<string, boolean> = { files: false, sessions: true, editor: false, terminal: true };
+const visibility: Record<string, boolean> = { files: true, sessions: true, editor: true, terminal: true };
 try {
-  const saved = JSON.parse(localStorage.getItem('rp2.visibility') || '{}');
+  const saved = JSON.parse(localStorage.getItem('rp2.fixed-visibility') || '{}');
   for (const key of Object.keys(visibility)) if (typeof saved?.[key] === 'boolean') visibility[key] = saved[key];
 } catch { /* A malformed layout starts with the default components. */ }
 function layout() {
   files.element.hidden = !visibility.files;
   sessions.element.hidden = !visibility.sessions;
-  get('indexes').hidden = !visibility.files && !visibility.sessions;
+  get('files-index').hidden = !visibility.files;
+  get('sessions-index').hidden = !visibility.sessions;
   get('editor').hidden = !visibility.editor;
   get('terminal').hidden = !visibility.terminal;
   get('workbench').classList.toggle('has-index', visibility.files || visibility.sessions);
   for (const control of Array.from(get('controls').querySelectorAll('button'))) control.setAttribute('aria-pressed', String(Boolean(visibility[control.dataset.component!])));
-  localStorage.setItem('rp2.visibility', JSON.stringify(visibility));
+  localStorage.setItem('rp2.fixed-visibility', JSON.stringify(visibility));
 }
 for (const [id, label] of [['files', 'Files Index'], ['sessions', 'Sessions Index'], ['editor', 'Editor'], ['terminal', 'Terminal']]) {
   const control = button(label, () => { visibility[id] = !visibility[id]; layout(); });
@@ -111,8 +112,13 @@ async function openFile(path: string) {
   } catch (error) { status((error as Error).message); }
 }
 const files = new FilesIndex((path) => void openFile(path), (path) => localStorage.setItem('rp2.directory', path));
-const sessions = new SessionsIndex(openSession, () => void createSession());
-get('indexes').append(files.element, sessions.element);
+const sessions = new SessionsIndex(openSession, () => void createSession(), async (codexId) => {
+  const info = await api<SessionInfo>('/api/sessions', { method: 'POST', body: JSON.stringify({ codexId }) });
+  await refresh();
+  openSession(info);
+});
+get('files-index').append(files.element);
+get('sessions-index').append(sessions.element);
 async function refresh() {
   const result = await api<{ sessions: SessionInfo[] }>('/api/sessions');
   sessionList = result.sessions;
