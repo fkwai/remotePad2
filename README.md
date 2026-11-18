@@ -43,11 +43,37 @@ and Editor above Terminal in the center. All four areas are initially visible.
 Files Index offers an expandable tree, Favorites and Repos. Existing RemotePad
 pins are copied once into ~/.remotepad2/navigation.json and managed separately.
 
-Sessions Index also lists the latest 200 unarchived local Codex sessions. Click
-one to run `codex resume <id> --no-alt-screen` in its original directory using
-the installed CLI and its existing configuration. A running RemotePad2 session
-is reused on subsequent clicks. The index refresh button reloads Codex metadata.
-This opens a CLI session; it does not attach to an existing desktop app process.
+Sessions Index lists up to 200 unarchived Codex sessions using your custom
+title and project label. For a conversation owned by the running local Codex
+App, RemotePad2 subscribes to that same conversation and routes typed messages
+back to its owner. The synchronized view lives inside the Terminal area.
+Approvals and interactive tool questions are handled in the Codex App.
+
+This integration uses the installed desktop App's IPC follower protocol and is
+version-dependent. A protocol mismatch or disconnected App is shown as an error.
+When no App owns the conversation, RemotePad2 uses the installed CLI to resume
+it. Closing an App-linked view detaches that view and leaves the App running.
+
+## SSH
+
+Click the computer name at the top right. Choose an alias from ~/.ssh/config
+(including Include files), or enter a host or SSH command:
+
+```sh
+ssh -p 22 -i "/path/to/key" -J jump-host user@machine
+```
+
+The connection uses your existing OpenSSH keys and known hosts. Authenticate
+and verify a new host in Terminal first if needed. The first connection
+uploads the API source and installs locked dependencies under
+~/.remotepad2/backend on the remote machine. That machine needs OpenSSH Unix
+socket forwarding, a POSIX shell, Node.js 22+ and pnpm in its non-interactive PATH.
+
+The backend runs as your SSH user on a private Unix socket and survives a
+transport disconnect. Files, terminals and Codex metadata belong to the selected
+machine. Local SSH config stays on the local machine. Directory and session
+restore keys are scoped by SSH target. Reconnect from the menu after restarting
+the local server. Each backend revision has its own running sessions.
 
 Shells survive refresh, browser closure and network loss while the backend
 remains running. Sessions Index can reopen them with bounded output replay.
@@ -63,3 +89,5 @@ sandboxed iframe. Files Index currently lists regular files and directories.
 Files, sessions, editor and terminal views are separate modules. Future
 layout presets can compose these same components as an IDE or Agent Manager.
 Debugging and Agent-specific hooks will share explicit execution identities.
+
+Run `pnpm test` for the integration protocol checks.

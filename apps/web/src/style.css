@@ -56,3 +56,15 @@ footer { padding: 6px 16px; color: #a7afb6; font-size: 11px; border-top: 1px sol
 @media(max-width:900px) { #files-index { width: 180px; } #sessions-index { width: 200px; } }
 .codex-row span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tab > button:first-child { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+#host { position: relative; }
+.connections-menu { position: absolute; z-index: 10; top: 30px; right: 0; width: 360px; max-height: 70vh; overflow: auto; padding: 12px; background: #202428; border: 1px solid #41494f; box-shadow: 0 10px 30px #0008; }
+.connections-menu > button { display: block; width: 100%; text-align: left; }
+.connections-menu form { margin-top: 12px; }
+.codex-body { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.codex-transcript { flex: 1; overflow: auto; padding: 16px; }
+.codex-transcript article { margin-bottom: 18px; }
+.codex-transcript strong { color: #a6d3b4; font-size: 12px; }
+.codex-transcript pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 system-ui; margin: 6px 0; }
+.codex-body form { display: flex; border-top: 1px solid #41494f; padding: 8px; gap: 8px; }
+.codex-body textarea { flex: 1; resize: vertical; min-height: 60px; background: #202428; color: inherit; padding: 8px; border: 1px solid #41494f; }
+.codex-row .project-tag { display: inline; color: #a6d3b4; background: #25332b; padding: 1px 5px; border-radius: 3px; }

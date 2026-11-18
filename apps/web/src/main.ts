@@ -1,5 +1,8 @@
 import type { FileContent, SessionInfo } from '@remotepad2/protocol';
 import { api, button } from './api';
+import { workspaceKey } from './connection';
+import { connectionsButton } from './components/connections';
+import { CodexPanel } from './components/codex';
 import { TerminalPanel } from './components/terminal';
 import { EditorPanel } from './components/editor';
 import { FilesIndex } from './components/files';
@@ -15,14 +18,14 @@ document.querySelector('#app')!.innerHTML = `
 <footer id="status" role="status">Ready</footer>`;
 const get = (id: string) => document.getElementById(id)!;
 const status = (message: string) => { get('status').textContent = message; };
-const terminals = new Map<string, { info: SessionInfo; panel: TerminalPanel }>();
+const terminals = new Map<string, { info: SessionInfo; panel: TerminalPanel | CodexPanel }>();
 const editors = new Map<string, EditorPanel>();
 let activeSession = '';
 let activeFile = '';
 let sessionList: SessionInfo[] = [];
 const visibility: Record<string, boolean> = { files: true, sessions: true, editor: true, terminal: true };
 try {
-  const saved = JSON.parse(localStorage.getItem('rp2.fixed-visibility') || '{}');
+  const saved = JSON.parse(localStorage.getItem(workspaceKey('fixed-visibility')) || '{}');
   for (const key of Object.keys(visibility)) if (typeof saved?.[key] === 'boolean') visibility[key] = saved[key];
 } catch { /* A malformed layout starts with the default components. */ }
 function layout() {
@@ -34,7 +37,7 @@ function layout() {
   get('terminal').hidden = !visibility.terminal;
   get('workbench').classList.toggle('has-index', visibility.files || visibility.sessions);
   for (const control of Array.from(get('controls').querySelectorAll('button'))) control.setAttribute('aria-pressed', String(Boolean(visibility[control.dataset.component!])));
-  localStorage.setItem('rp2.fixed-visibility', JSON.stringify(visibility));
+  localStorage.setItem(workspaceKey('fixed-visibility'), JSON.stringify(visibility));
 }
 for (const [id, label] of [['files', 'Files Index'], ['sessions', 'Sessions Index'], ['editor', 'Editor'], ['terminal', 'Terminal']]) {
   const control = button(label, () => { visibility[id] = !visibility[id]; layout(); });
@@ -50,30 +53,31 @@ function renderTerminals() {
     return tab;
   });
   get('terminal-tabs').replaceChildren(...tabs, button('+', () => void createSession(), 'New shell'));
-  sessions.render(sessionList, activeSession);
+  sessions.render([...sessionList, ...[...terminals.values()].filter((t) => t.info.kind === 'codex-app').map((t) => t.info)], activeSession);
 }
 function openSession(info: SessionInfo) {
   activeSession = info.id;
   if (!terminals.has(info.id)) {
-    const panel = new TerminalPanel(info.id, (message) => { if (activeSession === info.id) status(message); });
+    const report = (message: string) => { if (activeSession === info.id) status(message); };
+    const panel = info.kind === 'codex-app' ? new CodexPanel(info.codexId!, report) : new TerminalPanel(info.id, report);
     terminals.set(info.id, { info, panel });
     get('terminal-content').append(panel.element);
   }
   visibility.terminal = true;
-  localStorage.setItem('rp2.session', info.id);
+  localStorage.setItem(workspaceKey('session'), info.id);
   renderTerminals();
   layout();
 }
 async function closeSession(id: string) {
   try {
-    await api('/api/sessions/' + id, { method: 'DELETE' });
+    if (terminals.get(id)?.info.kind !== 'codex-app') await api('/api/sessions/' + id, { method: 'DELETE' });
     const terminal = terminals.get(id);
     terminal?.panel.dispose();
     terminal?.panel.element.remove();
     terminals.delete(id);
     sessionList = sessionList.filter((s) => s.id !== id);
     if (id === activeSession) activeSession = [...terminals.keys()].at(-1) || '';
-    localStorage.setItem('rp2.session', activeSession);
+    localStorage.setItem(workspaceKey('session'), activeSession);
     renderTerminals();
   } catch (error) { status((error as Error).message); }
 }
@@ -111,11 +115,17 @@ async function openFile(path: string) {
     layout();
   } catch (error) { status((error as Error).message); }
 }
-const files = new FilesIndex((path) => void openFile(path), (path) => localStorage.setItem('rp2.directory', path));
+const files = new FilesIndex((path) => void openFile(path), (path) => localStorage.setItem(workspaceKey('directory'), path));
 const sessions = new SessionsIndex(openSession, () => void createSession(), async (codexId) => {
   const info = await api<SessionInfo>('/api/sessions', { method: 'POST', body: JSON.stringify({ codexId }) });
   await refresh();
   openSession(info);
+}, (metadata) => {
+  for (const terminal of terminals.values()) {
+    const info = metadata.find((session) => session.id === terminal.info.codexId);
+    if (info) terminal.info.name = info.title;
+  }
+  renderTerminals();
 });
 get('files-index').append(files.element);
 get('sessions-index').append(sessions.element);
@@ -123,6 +133,7 @@ async function refresh() {
   const result = await api<{ sessions: SessionInfo[] }>('/api/sessions');
   sessionList = result.sessions;
   for (const [id, terminal] of terminals) {
+    if (terminal.info.kind === 'codex-app') continue;
     const info = sessionList.find((s) => s.id === id);
     if (info) terminal.info = info;
     else {
@@ -137,9 +148,16 @@ async function refresh() {
 async function start() {
   try {
     const health = await api<{ hostname: string }>('/api/health');
-    get('host').textContent = health.hostname;
+    connectionsButton(get('host'), status);
     await refresh();
-    const previous = sessionList.find((s) => s.id === localStorage.getItem('rp2.session'));
+    const savedId = localStorage.getItem(workspaceKey('session'));
+    if (savedId?.startsWith('app:')) {
+      const info = await api<SessionInfo>('/api/sessions', { method: 'POST', body: JSON.stringify({ codexId: savedId.slice(4) }) });
+      openSession(info);
+      layout();
+      return;
+    }
+    const previous = sessionList.find((s) => s.id === savedId);
     if (previous) openSession(previous);
     else if (sessionList.length) openSession(sessionList[0]);
     else await createSession();

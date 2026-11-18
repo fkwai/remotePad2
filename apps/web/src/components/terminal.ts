@@ -1,3 +1,4 @@
+import { workspaceSocket } from '../connection';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import type { TerminalEvent, TerminalInput } from '@remotepad2/protocol';
@@ -28,7 +29,7 @@ export class TerminalPanel {
     this.terminal.onData((data) => this.send({ type: 'input', data }));
     const connect = () => {
       status('Connecting…');
-      const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/terminal/${id}`);
+      const socket = new WebSocket(workspaceSocket('/ws/terminal/' + id));
       this.socket = socket;
       socket.onmessage = ({ data }) => {
         const event = JSON.parse(data) as TerminalEvent;

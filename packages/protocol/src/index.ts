@@ -1,4 +1,4 @@
-export interface SessionInfo { id: string; name: string; cwd: string; codexId?: string; alive: boolean; exitCode?: number }
+export interface SessionInfo { id: string; name: string; cwd: string; codexId?: string; kind?: 'shell' | 'codex-app'; alive: boolean; exitCode?: number }
 export type TerminalInput =
   | { type: 'input'; data: string }
   | { type: 'resize'; cols: number; rows: number };
@@ -9,6 +9,6 @@ export type TerminalEvent =
   | { type: 'error'; message: string };
 export interface FileEntry { name: string; path: string; directory: boolean }
 export interface FileContent { path: string; content: string; revision: string }
-export interface CodexSession { id: string; title: string; cwd: string; updatedAt: number }
+export interface CodexSession { id: string; title: string; cwd: string; updatedAt: number; project?: string }
 export interface PinnedFolder { path: string; name: string; branch?: string }
 export interface Navigation { favorites: PinnedFolder[]; repos: PinnedFolder[] }

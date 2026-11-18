@@ -6,7 +6,7 @@ export class SessionsIndex {
   private running = document.createElement('div');
   private codex = document.createElement('div');
   private error = document.createElement('div');
-  constructor(private open: (session: SessionInfo) => void, create: () => void, resume: (id: string) => Promise<void>) {
+  constructor(private open: (session: SessionInfo) => void, create: () => void, resume: (id: string) => Promise<void>, metadata?: (sessions: CodexSession[]) => void) {
     this.element.className = 'index sessions-index';
     this.element.setAttribute('aria-label', 'Sessions Index');
     const heading = document.createElement('h2');
@@ -18,6 +18,7 @@ export class SessionsIndex {
       this.error.textContent = '';
       try {
         const { sessions } = await api<{ sessions: CodexSession[] }>('/api/codex/sessions');
+        metadata?.(sessions);
         this.codex.replaceChildren();
         if (!sessions.length) this.codex.textContent = 'No Codex sessions';
         for (const session of sessions) {
@@ -30,7 +31,10 @@ export class SessionsIndex {
           const title = document.createElement('span');
           title.textContent = session.title;
           const detail = document.createElement('small');
-          detail.textContent = session.cwd.split('/').pop() + ' · ' + new Date(session.updatedAt).toLocaleDateString();
+          const project = document.createElement('span');
+          project.className = 'project-tag';
+          project.textContent = session.project || session.cwd.split('/').pop() || '/';
+          detail.append(project, document.createTextNode(' ' + new Date(session.updatedAt).toLocaleDateString()));
           row.append(title, detail);
           this.codex.append(row);
         }
@@ -39,6 +43,7 @@ export class SessionsIndex {
     this.error.className = 'error';
     this.element.append(heading, button('+ New shell', create), this.running, codexHeading, this.error, this.codex);
     void load();
+    window.setInterval(() => { if (!this.codex.querySelector('button:disabled')) void load(); }, 10000);
   }
   render(sessions: SessionInfo[], active: string) {
     this.running.replaceChildren();

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import pty from 'node-pty';
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
+import { appOwner } from './codex-app.ts';
 import { codexSessions } from './codex.ts';
 import type { SessionInfo, TerminalEvent } from '@remotepad2/protocol';
 
@@ -31,9 +32,14 @@ export async function registerTerminal(app: FastifyInstance) {
   app.post<{ Body: { codexId?: string } }>('/api/sessions', async (req, reply) => {
     const codexId = req.body?.codexId;
     const attached = codexId ? [...sessions.values()].find((session) => session.info.codexId === codexId && session.info.alive) : undefined;
-    if (attached) return attached.info;
     const existing = codexId ? codexSessions().find((session) => session.id === codexId) : undefined;
     if (codexId && !existing) return reply.code(404).send({ error: 'Codex session unavailable.' });
+    if (existing) {
+      const owner = await appOwner(existing.id).catch(() => null);
+      if (owner) return { id: 'app:' + existing.id, codexId: existing.id, kind: 'codex-app',
+        name: existing.title, cwd: existing.cwd, alive: true };
+    }
+    if (attached) return attached.info;
     const cwd = existing?.cwd || os.homedir();
     let process: pty.IPty;
     try {
@@ -69,7 +75,7 @@ export async function registerTerminal(app: FastifyInstance) {
     return { ok: true };
   });
   app.get<{ Params: { id: string } }>('/ws/terminal/:id', { websocket: true }, (socket, req) => {
-    if (!req.headers.origin) { socket.close(1008, 'Browser origin required'); return; }
+    if (!req.headers.origin && !process.env.REMOTEPAD2_WORKER_SOCKET) { socket.close(1008, 'Browser origin required'); return; }
     const session = sessions.get(req.params.id);
     if (!session) { socket.close(1008, 'Session unavailable'); return; }
     session.clients.add(socket);

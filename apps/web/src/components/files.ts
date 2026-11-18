@@ -1,4 +1,5 @@
 import type { FileEntry, Navigation } from '@remotepad2/protocol';
+import { workspaceKey } from '../connection';
 import { api, button } from '../api';
 
 interface Listing { path: string; parent: string; entries: FileEntry[] }
@@ -42,7 +43,7 @@ export class FilesIndex {
     this.tree.className = 'file-tree';
     this.element.append(heading, modes, this.pins, form, actions, this.error, this.tree);
     void this.refreshPins();
-    void this.load(localStorage.getItem('rp2.directory') || undefined);
+    void this.load(localStorage.getItem(workspaceKey('directory')) || undefined);
   }
   private async refreshPins() {
     try { this.navigation = await api<Navigation>('/api/navigation'); this.renderPins(); }

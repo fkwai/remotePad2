@@ -1,5 +1,6 @@
+import { workspaceUrl } from './connection';
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { ...init, headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...init?.headers } });
+  const response = await fetch(url.startsWith('/api/ssh/') ? url : workspaceUrl(url), { ...init, headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...init?.headers } });
   const body = await response.json();
   if (!response.ok) throw new Error(body.error || response.statusText);
   return body;

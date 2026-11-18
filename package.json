@@ -11,7 +11,8 @@
     "dev": "pnpm --parallel --filter @remotepad2/server --filter @remotepad2/web dev",
     "build": "pnpm typecheck && pnpm --filter @remotepad2/web build",
     "typecheck": "pnpm -r --if-present typecheck",
-    "start": "pnpm --filter @remotepad2/server start"
+    "start": "pnpm --filter @remotepad2/server start",
+    "test": "apps/server/node_modules/.bin/tsx --test tests/*.test.ts"
   },
   "devDependencies": {
     "typescript": "^5.9.2",
