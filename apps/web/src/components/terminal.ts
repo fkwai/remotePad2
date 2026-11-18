@@ -38,7 +38,7 @@ export class TerminalPanel {
           this.terminal.write(event.replay);
           status(event.session.alive ? event.session.cwd : `Exited (${event.session.exitCode})`);
           resize();
-          this.terminal.focus();
+          if (!document.activeElement || document.activeElement === document.body || this.element.contains(document.activeElement)) this.terminal.focus();
         }
         if (event.type === 'output') this.terminal.write(event.data);
         if (event.type === 'exit') status(`Exited (${event.code})`);

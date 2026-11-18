@@ -1,4 +1,5 @@
 import os from 'node:os';
+import { previewRequest } from './preview-access.ts';
 import { sshConfigHosts } from './ssh-hosts.ts';
 import { request } from 'node:http';
 import { createConnection } from 'node:net';
@@ -6,7 +7,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import WebSocket, { type RawData } from 'ws';
 import { closeSsh as closeSshConnections, connectedHosts as connectedSshHosts, connectSsh, sshSocket as socketFor, parseSsh } from './ssh.ts';
 
-const workerPath = /^\/api\/(?:health|files|file|sessions|codex|navigation)(?:\/|\?|$)/;
+const workerPath = /^\/api\/(?:health|files|file|preview|sessions|codex|navigation)(?:\/|\?|$)/;
 const workerSocket = /^\/ws\/(?:terminal|codex)\/[^/?]+$/;
 
 function localBrowser(req: FastifyRequest) {
@@ -23,7 +24,7 @@ function localBrowser(req: FastifyRequest) {
 export async function registerSshRoutes(app: FastifyInstance) {
   await app.register(async (router) => {
     router.addHook('onRequest', async (req, reply) => {
-      if (!localBrowser(req)) return reply.code(403).send({ error: 'SSH connections are available from the local RemotePad browser.' });
+      if (!localBrowser(req) && !previewRequest(req)) return reply.code(403).send({ error: 'SSH connections are available from the local RemotePad browser.' });
     });
 
     router.get('/api/ssh/hosts', async () => ({
@@ -68,7 +69,7 @@ export async function registerSshRoutes(app: FastifyInstance) {
           headers: body === undefined ? {} : { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) },
         }, (res) => {
           reply.code(res.statusCode || 502);
-          for (const name of ['content-type', 'content-length', 'content-disposition', 'cache-control']) {
+          for (const name of ['content-type', 'content-length', 'content-disposition', 'cache-control', 'content-security-policy', 'x-content-type-options']) {
             const value = res.headers[name];
             if (value !== undefined) reply.header(name, value);
           }

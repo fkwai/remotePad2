@@ -1,4 +1,5 @@
 import os from 'node:os';
+import { previewKey, previewRequest } from './preview-access.ts';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
@@ -17,6 +18,7 @@ const port = Number(process.env.REMOTEPAD2_PORT || 6020);
 await app.register(websocket);
 app.addHook('onRequest', async (request, reply) => {
   if (workerSocket) return;
+  if (previewRequest(request) && [`127.0.0.1:${port}`, `localhost:${port}`].includes(request.headers.host || '')) return;
   const origin = request.headers.origin;
   const allowed = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`,
     'http://127.0.0.1:6021', 'http://localhost:6021']);
@@ -25,6 +27,7 @@ app.addHook('onRequest', async (request, reply) => {
     return reply.code(403).send({ error: 'Open RemotePad2 from its local address.' });
   }
 });
+app.get('/api/preview-key', async () => ({ key: previewKey }));
 app.get('/api/health', async () => ({ ok: true, hostname: os.hostname() }));
 await registerTerminal(app);
 await registerCodexApp(app);

@@ -4,6 +4,8 @@ import { workspaceKey } from './connection';
 import { connectionsButton } from './components/connections';
 import { CodexPanel } from './components/codex';
 import { TerminalPanel } from './components/terminal';
+import { FolderPanel } from './components/folder';
+import { isImage } from './components/render';
 import { EditorPanel } from './components/editor';
 import { FilesIndex } from './components/files';
 import { SessionsIndex } from './components/sessions';
@@ -19,7 +21,7 @@ document.querySelector('#app')!.innerHTML = `
 const get = (id: string) => document.getElementById(id)!;
 const status = (message: string) => { get('status').textContent = message; };
 const terminals = new Map<string, { info: SessionInfo; panel: TerminalPanel | CodexPanel }>();
-const editors = new Map<string, EditorPanel>();
+const editors = new Map<string, EditorPanel | FolderPanel>();
 let activeSession = '';
 let activeFile = '';
 let sessionList: SessionInfo[] = [];
@@ -90,7 +92,7 @@ function renderEditors() {
     editor.element.hidden = path !== activeFile;
     const tab = document.createElement('div');
     tab.className = 'tab' + (path === activeFile ? ' active' : '');
-    tab.append(button((editor.dirty ? '● ' : '') + path.split('/').pop(), () => { activeFile = path; renderEditors(); }, path),
+    tab.append(button((editor.dirty ? '● ' : '') + (editor instanceof FolderPanel ? editor.label : path.split('/').pop()), () => { activeFile = path; renderEditors(); }, path),
       button('×', () => {
         if (editor.dirty && !confirm('Discard unsaved changes in ' + path + '?')) return;
         editor.element.remove();
@@ -104,7 +106,7 @@ function renderEditors() {
 async function openFile(path: string) {
   try {
     if (!editors.has(path)) {
-      const data = await api<FileContent>('/api/file?path=' + encodeURIComponent(path));
+      const data = isImage(path) ? { path, content: '', revision: '' } : await api<FileContent>('/api/file?path=' + encodeURIComponent(path));
       const panel = new EditorPanel(data, renderEditors, status);
       editors.set(path, panel);
       get('editor-content').append(panel.element);
@@ -115,7 +117,19 @@ async function openFile(path: string) {
     layout();
   } catch (error) { status((error as Error).message); }
 }
-const files = new FilesIndex((path) => void openFile(path), (path) => localStorage.setItem(workspaceKey('directory'), path));
+function openFolder(directory: string) {
+  const key = 'folder:' + directory;
+  if (!editors.has(key)) {
+    const panel = new FolderPanel(directory, (path) => void openFile(path), renderEditors, status);
+    editors.set(key, panel);
+    get('editor-content').append(panel.element);
+  }
+  activeFile = key;
+  visibility.editor = true;
+  renderEditors();
+  layout();
+}
+const files = new FilesIndex((path) => void openFile(path), (path) => localStorage.setItem(workspaceKey('directory'), path), openFolder);
 const sessions = new SessionsIndex(openSession, () => void createSession(), async (codexId) => {
   const info = await api<SessionInfo>('/api/sessions', { method: 'POST', body: JSON.stringify({ codexId }) });
   await refresh();

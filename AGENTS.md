@@ -10,7 +10,15 @@ Terminal-first web workbench, developed in this repository on dev.
   Index, Editor and Terminal. The workbench in main.ts composes their instances.
 - Fixed layout: Files Index on the left, Sessions Index on the right, Editor
   above Terminal in the center. Header toggles hide component areas. Editor and Terminal have their own tabs.
-- Editor optionally renders Markdown/HTML in a sandboxed iframe.
+- Editor defaults to rendered Markdown/HTML, images, JSON/JSONL, CSV/TSV and logs.
+  Source / Render switches editable text; code uses a 12px font. Markdown/HTML
+  use opaque sandbox frames. Preview capability paths preserve relative assets
+  locally and through SSH without allowing sandbox access to normal APIs.
+- Folder Explorer opens from Open folder, directory Enter, or tree right-click
+  Open in Explorer (double-click shortcut). Folder items select on click and
+  open on double-click / right-click Open; Icons/Details change the listing.
+- Terminal readiness/reconnection never steals focus from file/editor inputs.
+- Binary previews allow 32 MB; the editable UTF-8 limit remains 2 MB.
 - Backend PTYs survive browser closure and reconnect via stable session IDs.
   Closing a Terminal tab explicitly deletes that session and ends its process.
   Backend shutdown ends all sessions; server-restart persistence is not provided.

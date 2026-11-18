@@ -1,5 +1,6 @@
 import type { FileEntry, Navigation } from '@remotepad2/protocol';
 import { workspaceKey } from '../connection';
+import { menu } from './menu';
 import { api, button } from '../api';
 
 interface Listing { path: string; parent: string; entries: FileEntry[] }
@@ -16,7 +17,8 @@ export class FilesIndex {
   private mode: 'favorites' | 'repos' = 'favorites';
   private navigation: Navigation = { favorites: [], repos: [] };
   private generation = 0;
-  constructor(private open: (path: string) => void, private report: (path: string) => void) {
+  private rows = new Map<string, HTMLButtonElement>();
+  constructor(private open: (path: string) => void, private report: (path: string) => void, private openFolder: (path: string) => void) {
     this.element.className = 'index files-index';
     this.element.setAttribute('aria-label', 'Files Index');
     const heading = document.createElement('h2');
@@ -33,11 +35,11 @@ export class FilesIndex {
     }
     const form = document.createElement('form');
     this.path.setAttribute('aria-label', 'Directory');
-    form.onsubmit = (event) => { event.preventDefault(); void this.load(this.path.value); };
+    form.onsubmit = (event) => { event.preventDefault(); void this.load(this.path.value).then((loaded) => { if (loaded) this.openFolder(this.root); }); };
     form.append(this.path);
     const actions = document.createElement('div');
     actions.className = 'index-modes';
-    actions.append(button('★ Favorite', () => void this.pin('favorites'), 'Favorite current folder'),
+    actions.append(button('Open folder', () => this.openFolder(this.root)), button('↻', () => void this.load(this.root), 'Refresh tree'), button('★ Favorite', () => void this.pin('favorites'), 'Favorite current folder'),
       button('◆ Repo', () => void this.pin('repos'), 'Add current Git repo'));
     this.error.className = 'error';
     this.tree.className = 'file-tree';
@@ -82,6 +84,7 @@ export class FilesIndex {
       this.expanded.add(result.path);
       this.error.textContent = '';
       this.renderTree();
+      return true;
     } catch (error) { this.error.textContent = (error as Error).message; }
   }
   private async toggle(directory: string) {
@@ -105,12 +108,26 @@ export class FilesIndex {
     this.tree.append(heading);
     const append = (directory: string, depth: number) => {
       for (const item of this.listings.get(directory)?.entries || []) {
-        const row = button((item.directory ? this.expanded.has(item.path) ? '▾ ' : '▸ ' : '  ') + item.name,
-          () => {
-            this.selected = item.path;
-            if (item.directory) void this.toggle(item.path);
-            else { this.open(item.path); this.renderTree(); }
-          }, item.path);
+        const row = this.rows.get(item.path) || button('', () => {});
+        this.rows.set(item.path, row);
+        row.textContent = (item.directory ? this.expanded.has(item.path) ? '▾ ' : '▸ ' : '  ') + item.name;
+        row.title = item.path;
+        row.onclick = (event) => {
+          this.selected = item.path;
+          if (item.directory) { if (event.detail !== 2) void this.toggle(item.path); }
+          else { this.open(item.path); this.renderTree(); }
+        };
+        row.ondblclick = () => { if (item.directory) this.openFolder(item.path); };
+        row.oncontextmenu = (event) => menu(event, [
+          { label: item.directory ? 'Open in Explorer' : 'Open', hint: item.directory ? 'Dbl-click' : undefined,
+            action: () => item.directory ? this.openFolder(item.path) : this.open(item.path) },
+          ...(item.directory ? [
+            { label: 'Browse as root', action: () => void this.load(item.path) },
+            { label: 'Add to Favorites', action: () => void this.pin('favorites', item.path) },
+            { label: 'Add to Repos', action: () => void this.pin('repos', item.path) },
+          ] : []),
+          { label: 'Refresh', action: () => void this.load(this.root) },
+        ]);
         row.className = 'tree-row' + (this.selected === item.path ? ' selected' : '');
         row.style.paddingLeft = (8 + depth * 14) + 'px';
         if (item.directory) row.setAttribute('aria-expanded', String(this.expanded.has(item.path)));

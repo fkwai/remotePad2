@@ -33,7 +33,7 @@ as the current OS user. It provides local access without an account system.
 - **Files Index** browses local directories and opens files in Editor.
 - **Sessions Index** selects existing shells or creates another.
 - **Editor** edits UTF-8 files with save/conflict detection and optional
-  Markdown or HTML rendering. Debug capability will be added later.
+  Markdown/HTML, images, JSON/JSONL, CSV/TSV and log rendering. Debug capability will be added later.
 - **Terminal** attaches to a backend-owned PTY. Agent CLIs can run here.
 
 Header toggles hide or show each area. Files and sessions open in their own
@@ -86,8 +86,16 @@ Backend restarts end sessions. Unsaved editor buffers are kept in browser
 memory, with a browser warning before leaving.
 
 The current Editor supports UTF-8 text up to 2 MB. Save checks the file's
-revision to catch external edits. Rendered Markdown and HTML run in a
-sandboxed iframe. Files Index currently lists regular files and directories.
+revision to catch external edits. Code uses a compact 12px font. Source / Render
+switches between editable text and its viewer. Rendered Markdown and HTML run
+in sandboxed iframes with relative images, scripts and styles resolved through
+the selected machine. Binary previews allow up to 32 MB.
+
+Use **Open folder**, directory Enter, or a folder’s **Open in Explorer** context
+menu to open a folder tab. The tree expands on a single click; double-click
+opens Explorer. Explorer items select on click and open through double-click
+or the **Open** context menu. Its toolbar offers Icons, Details, parent and
+refresh controls. Files Index lists regular files and directories.
 
 Files, sessions, editor and terminal views are separate modules. Future
 layout presets can compose these same components as an IDE or Agent Manager.

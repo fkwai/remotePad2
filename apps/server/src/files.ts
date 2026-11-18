@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { readdir, stat } from 'node:fs/promises';
-import { readFileSync, realpathSync, statSync, writeFileSync, renameSync, unlinkSync } from 'node:fs';
+import { createReadStream, readFileSync, realpathSync, statSync, writeFileSync, renameSync, unlinkSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 
 const LIMIT = 2 * 1024 * 1024;
@@ -15,6 +15,28 @@ function read(file: string) {
   return { path: file, content: new TextDecoder('utf-8', { fatal: true }).decode(bytes), revision: revision(bytes) };
 }
 export async function registerFiles(app: FastifyInstance) {
+  app.get<{ Params: { key: string; '*': string } }>('/api/preview/:key/*', async (req, reply) => {
+    try {
+      const file = realpathSync('/' + req.params['*']);
+      const info = await stat(file);
+      if (!info.isFile()) return reply.code(400).send({ error: 'Choose a file.' });
+      if (info.size > 32 * 1024 * 1024) return reply.code(413).send({ error: 'Preview exceeds 32 MB.' });
+      const types: Record<string, string> = {
+        '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8',
+        '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+        '.bmp': 'image/bmp', '.ico': 'image/x-icon',
+        '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+        '.woff': 'font/woff', '.woff2': 'font/woff2', '.json': 'application/json',
+      };
+      reply.header('content-security-policy', 'sandbox allow-scripts allow-downloads');
+      reply.header('x-content-type-options', 'nosniff');
+      reply.header('cache-control', 'no-cache');
+      reply.type(types[path.extname(file).toLowerCase()] || 'text/plain; charset=utf-8');
+      return reply.send(createReadStream(file));
+    } catch (error) { return reply.code(404).send({ error: (error as Error).message }); }
+  });
+
   app.get<{ Querystring: { path?: string } }>('/api/files', async (req, reply) => {
     try {
       const directory = path.resolve(req.query.path || os.homedir());

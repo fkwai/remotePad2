@@ -68,3 +68,32 @@ footer { padding: 6px 16px; color: #a7afb6; font-size: 11px; border-top: 1px sol
 .codex-body form { display: flex; border-top: 1px solid #41494f; padding: 8px; gap: 8px; }
 .codex-body textarea { flex: 1; resize: vertical; min-height: 60px; background: #202428; color: inherit; padding: 8px; border: 1px solid #41494f; }
 .codex-row .project-tag { display: inline; color: #a6d3b4; background: #25332b; padding: 1px 5px; border-radius: 3px; }
+.editor-body textarea { font: 12px/1.55 Menlo, Consolas, monospace; padding: 10px 12px; }
+.rendered-view { flex: 1; min-height: 0; overflow: auto; padding: 12px; font-size: 12px; line-height: 1.6; }
+.rendered-view:has(iframe) { display: flex; padding: 0; }
+.rendered-view iframe { flex: 1; height: 100%; min-height: 0; }
+.rendered-view table { border-collapse: collapse; width: max-content; min-width: 100%; }
+.rendered-view td, .rendered-view th { border: 1px solid #353c42; padding: 5px 10px; text-align: left; white-space: pre-wrap; max-width: 500px; }
+.rendered-view th { background: #252b30; position: sticky; top: 0; }
+.rendered-view details { margin-left: 14px; }
+.rendered-view summary { cursor: pointer; color: #a6d3b4; }
+.json-leaf { padding-left: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.jsonl-card { padding: 8px; border-bottom: 1px solid #353c42; }
+.image-view { display: block; background: #101214; }
+.image-view img { display: block; max-width: 100%; height: auto; }
+.context-menu { position: fixed; z-index: 100; min-width: 190px; padding: 4px; background: #242a2e; border: 1px solid #424b52; border-radius: 5px; box-shadow: 0 6px 24px #0008; font-size: 12px; }
+.context-menu button { display: flex; width: 100%; justify-content: space-between; gap: 24px; text-align: left; }
+.context-menu small { color: #99a4ac; }
+.folder-body { position: absolute; inset: 0; display: flex; flex-direction: column; font-size: 12px; }
+.folder-toolbar { display: flex; gap: 4px; padding: 6px; border-bottom: 1px solid #353c42; }
+.folder-toolbar input { margin: 0; flex: 1; min-width: 30px; }
+.folder-items { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill,minmax(100px,1fr)); align-content: start; gap: 4px; padding: 8px; }
+.folder-item { display: flex; flex-direction: column; align-items: center; gap: 6px; overflow-wrap: anywhere; padding: 12px 4px; }
+.folder-icon { font-size: 28px; color: #91b5d3; }
+.folder-item.selected { background: #26372e; }
+.folder-items.details { display: block; }
+.folder-items.details .folder-item { flex-direction: row; width: 100%; text-align: left; padding: 5px 8px; }
+.folder-items.details .folder-icon { font-size: 16px; }
+.editor-toolbar button, .folder-toolbar button { white-space: nowrap; }
+
+.files-index > .index-modes { flex-wrap: wrap; }
