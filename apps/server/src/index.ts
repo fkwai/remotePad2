@@ -15,14 +15,17 @@ import { registerFiles } from './files.ts';
 import { registerTerminal } from './terminal.ts';
 
 const workerSocket = process.env.REMOTEPAD2_WORKER_SOCKET;
+const localSocket = process.env.REMOTEPAD2_LOCAL_SOCKET;
+const gatewayPort = Number(process.env.REMOTEPAD2_GATEWAY_PORT || 6020);
 const app = Fastify({ logger: true });
 const port = Number(process.env.REMOTEPAD2_PORT || 6020);
 await app.register(websocket);
 app.addHook('onRequest', async (request, reply) => {
   if (workerSocket) return;
-  if (previewRequest(request) && [`127.0.0.1:${port}`, `localhost:${port}`].includes(request.headers.host || '')) return;
+  const publicPort = localSocket ? gatewayPort : port;
+  if (previewRequest(request) && [`127.0.0.1:${publicPort}`, `localhost:${publicPort}`].includes(request.headers.host || '')) return;
   const origin = request.headers.origin;
-  const allowed = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`,
+  const allowed = new Set([`http://127.0.0.1:${publicPort}`, `http://localhost:${publicPort}`,
     'http://127.0.0.1:6021', 'http://localhost:6021']);
   const site = request.headers['sec-fetch-site'];
   if (!allowed.has(`http://${request.headers.host}`) || (origin && !allowed.has(origin)) || site === 'cross-site') {
@@ -31,7 +34,7 @@ app.addHook('onRequest', async (request, reply) => {
 });
 app.get('/api/preview-key', async () => ({ key: previewKey }));
 if (!workerSocket) { registerVersion(app); registerWindows(app); }
-app.get('/api/health', async () => ({ ok: true, hostname: os.hostname() }));
+app.get('/api/health', async () => ({ ok: true, hostname: os.hostname(), pid: process.pid, channel: process.env.REMOTEPAD2_CHANNEL || null }));
 await registerTerminal(app);
 await registerCodexApp(app);
 await registerFiles(app);
@@ -43,6 +46,8 @@ if (workerSocket) {
   const { unlink } = await import('node:fs/promises');
   await unlink(workerSocket).catch(() => {});
   await app.listen({ path: workerSocket });
+} else if (localSocket) {
+  await app.listen({ path: localSocket });
 } else await app.listen({ host: '127.0.0.1', port });
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => { void app.close().then(() => process.exit(0)); });

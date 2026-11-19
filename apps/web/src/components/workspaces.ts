@@ -1,3 +1,4 @@
+import { localFetch, channel as activeChannel } from '../base';
 import { button } from '../api';
 import { profile, sshTarget } from '../connection';
 import { forgetWindow, saveWindow, windowList, windowUrl } from '../windows';
@@ -9,7 +10,7 @@ export function workspaceMenu(host: HTMLElement) {
     const head = document.createElement('div'); head.className = 'version-pop-head'; head.append('RemotePad2', button('×', close, 'Close version menu')); body.append(head);
     const version = document.createElement('div'); version.className = 'version-info'; version.textContent = 'Loading version…'; body.append(version);
     const error = document.createElement('div'); error.className = 'error'; body.append(error);
-    void fetch('/api/version').then(async (response) => {
+    void localFetch('/api/version').then(async (response) => {
       if (!response.ok) throw new Error('Version information requires the updated backend.');
       const info = await response.json();
       version.replaceChildren();
@@ -19,8 +20,42 @@ export function workspaceMenu(host: HTMLElement) {
       if (info.dirty) { const dirty = document.createElement('small'); dirty.textContent = 'local changes'; version.append(dirty); }
       const channels = document.createElement('div'); channels.className = 'version-channels';
       const heading = document.createElement('h3'); heading.textContent = 'Versions'; channels.append(heading);
-      for (const branch of info.branches || []) { const row = document.createElement('div'); row.className = 'version-branch-row'; const name = document.createElement('span'); name.textContent = branch.name; const commit = document.createElement('small'); commit.textContent = branch.commit + (branch.name === info.branch ? ' · here' : ''); row.append(name, commit); channels.append(row); }
       body.append(channels);
+      if (activeChannel) {
+        const rows = document.createElement('div'); channels.append(rows);
+        const refresh = async () => {
+          if (!body.isConnected) return;
+          try {
+            const response = await fetch('/_gateway/lanes'); const data = await response.json();
+            if (!response.ok) throw new Error(data.error);
+            rows.replaceChildren(...data.lanes.map((lane: {name:string;alive:boolean;phase?:string;commit?:string;error?:string;url:string}) => {
+              const row = document.createElement('div'); row.className = 'version-branch-row';
+              const name = document.createElement('span'); name.textContent = lane.name;
+              const meta = document.createElement('small'); meta.textContent = [lane.commit, lane.alive ? lane.name === activeChannel ? 'here' : 'running' : lane.phase || 'stopped'].filter(Boolean).join(' · '); meta.title = lane.error || '';
+              const action = button(lane.alive ? 'Switch' : 'Start', () => {});
+              action.disabled = lane.name === activeChannel || (!lane.alive && ['Preparing checkout','Installing and building','Starting'].includes(lane.phase || ''));
+              action.onclick = async (event) => {
+                try {
+                  if (lane.alive) {
+                    await saveWindow(); const url = new URL(lane.url, location.origin); url.search = location.search;
+                    if (event.ctrlKey || event.metaKey) window.open(url.href, '_blank', 'noopener'); else location.assign(url.href);
+                  } else {
+                    action.disabled = true;
+                    const response = await fetch('/_gateway/lanes/' + lane.name + '/start', {method:'POST'});
+                    const result = await response.json(); if (!response.ok) throw new Error(result.error); void refresh();
+                  }
+                } catch (err) { error.textContent = (err as Error).message; action.disabled = false; }
+              };
+              row.append(name, meta, action); return row;
+            }));
+          } catch (err) { error.textContent = (err as Error).message; }
+          if (body.isConnected) window.setTimeout(refresh, 1500);
+        };
+        void refresh();
+      } else for (const branch of info.branches || []) {
+        const row = document.createElement('div'); row.className = 'version-branch-row'; const name = document.createElement('span'); name.textContent = branch.name;
+        const commit = document.createElement('small'); commit.textContent = branch.commit + (branch.name === info.branch ? ' · here' : ''); row.append(name, commit); channels.append(row);
+      }
     }).catch((err) => { version.textContent = err.message; });
     const heading = document.createElement('div'); heading.className = 'version-windows-head';
     heading.append('Windows', button('+ New', () => {
@@ -40,7 +75,7 @@ export function workspaceMenu(host: HTMLElement) {
           const detail = document.createElement('small'); detail.textContent = (row.ssh ? row.ssh + ' · ' : '') + row.id + (current ? ' · here' : ''); open.append(name, detail);
           const rename = async () => {
             const name = prompt('Window name', row.name); if (!name?.trim()) return;
-            const response = await fetch('/api/windows/' + encodeURIComponent(row.id), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ssh: row.ssh, name: name.trim() }) });
+            const response = await localFetch('/api/windows/' + encodeURIComponent(row.id), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ssh: row.ssh, name: name.trim() }) });
             if (!response.ok) { error.textContent = 'Could not rename window.'; return; } void render();
           };
           open.oncontextmenu = (event) => menu(event, [
@@ -62,5 +97,5 @@ export function workspaceMenu(host: HTMLElement) {
   const version = document.createElement('span'); version.className = 'brand-version';
   const channel = document.createElement('span'); channel.className = 'brand-channel';
   toggle.replaceChildren(mark, name, version, channel);
-  void fetch('/api/version').then((response) => response.json()).then((info) => { version.textContent = 'v' + info.version; channel.textContent = info.branch; }).catch(() => {});
+  void localFetch('/api/version').then((response) => response.json()).then((info) => { version.textContent = 'v' + info.version; channel.textContent = info.branch; }).catch(() => {});
 }

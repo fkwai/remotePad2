@@ -1,0 +1,46 @@
+import {test,expect} from '@playwright/test';
+import {mkdir,writeFile} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+const root=process.env.E2E_WORK_ROOT || path.join(os.homedir(),'work/tmp/remotepad2-e2e');
+const fixtures=path.join(root,'gateway-fixtures');
+test.beforeAll(async()=>{
+ await mkdir(fixtures,{recursive:true});
+ await writeFile(path.join(fixtures,'README.md'),'# Gateway preview\n\n![pixel](pixel.png)\n');
+ await writeFile(path.join(fixtures,'pixel.png'),Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64'));
+});
+test('prefixed assets, local controls, files, opaque previews and terminal stay in one lane',async({page})=>{
+ await page.goto('/dev/?w=gateway-test');
+ await expect(page.locator('.xterm')).toBeVisible();
+ await page.getByRole('button',{name:'Go to path',exact:true}).click();
+ await page.getByRole('textbox',{name:'Directory',exact:true}).fill(fixtures);
+ await page.getByRole('textbox',{name:'Directory',exact:true}).press('Enter');
+ await expect(page.getByRole('textbox',{name:'Explorer directory'})).toHaveValue(fixtures);
+ await page.locator('.tree-row').filter({has:page.locator('.tree-name',{hasText:/^README.md$/})}).locator('.tree-name').click();
+ const frame=page.frameLocator('#editor-content iframe');
+ await expect(frame.getByRole('heading')).toHaveText('Gateway preview');
+ await expect(frame.locator('img')).toHaveJSProperty('naturalWidth',1);
+ await page.locator('.xterm-helper-textarea').focus();
+ await page.keyboard.type("printf 'gateway-%s\\n' 'terminal-ok'");await page.keyboard.press('Enter');
+ await expect(page.locator('.xterm-screen')).toContainText('gateway-terminal-ok');
+ await page.locator('#host > button').click();
+ await expect(page.locator('#host .popover h3').first()).toBeVisible();
+});
+test('version Switch preserves window and shell processes across branch instances',async({page,request})=>{
+ await page.goto('/dev/?w=lane-switch');
+ await expect(page.locator('.xterm')).toBeVisible();
+ const devSession=await page.evaluate(()=>localStorage.getItem('rp2.window.lane-switch.session.dev'));
+ const devPid=(await(await request.get('/dev/api/health')).json()).pid;
+ const mainPid=(await(await request.get('/main/api/health')).json()).pid;
+ expect(devPid).not.toBe(mainPid);
+ await page.getByRole('button',{name:'RemotePad2',exact:true}).click();
+ const row=page.locator('.version-branch-row').filter({has:page.locator('span',{hasText:/^main$/})});
+ await row.getByRole('button',{name:'Switch',exact:true}).click();
+ await expect(page).toHaveURL(/\/main\/\?w=lane-switch/);
+ await expect(page.locator('.xterm')).toBeVisible();
+ const sessions=(await(await request.get('/dev/api/sessions')).json()).sessions;
+ expect(sessions.find((session:any)=>session.id===devSession)?.alive).toBe(true);
+ await page.goto('/dev/?w=lane-switch');
+ await expect(page.locator('.xterm')).toBeVisible();
+ expect(await page.evaluate(()=>localStorage.getItem('rp2.window.lane-switch.session.dev'))).toBe(devSession);
+});

@@ -98,3 +98,38 @@ Terminal-first web workbench, developed in this repository on dev.
   Harness uses an isolated HOME, port 6220 (E2E_PORT overrides), and fixtures
   under ~/work/tmp/remotepad2-e2e (E2E_WORK_ROOT overrides). Never restart the
   existing instance to test UI changes.
+
+## Release channels / gateway
+
+- The standing branches are main (stable/default), dev (normal development),
+  nightly (Actions publishes validated dev snapshots). Initial main creation
+  was explicitly requested by the user. Future development stays on dev; main
+  promotion needs a release request. Never force-push.
+- .github/workflows/ci.yml gates main/dev pushes and PRs. nightly.yml runs daily
+  00:00 UTC / 08:00 Asia/Shanghai and on manual dispatch. It stamps package.json,
+  verifies build + unit + browser + gateway tests, then commit-tree publishes the
+  validated dev tree with previous nightly as a parent (ordinary FF push). It
+  leaves main and local runtimes unchanged. scripts/nightly-version.mjs owns stamps.
+- One gateway entry defaults to 6020: /main/, /dev/, /nightly/. No more one-off
+  public preview ports in the product flow. A port conflict refuses startup;
+  never stop the occupied instance just to make the gateway bind.
+- apps/server/src/gateway.ts proxies HTTP + WebSocket over private Unix sockets.
+  lanes.ts / lane-cli.ts manage starts/status/explicit stops. pnpm gateway and
+  pnpm lanes start|stop main|dev|nightly; status lists all. Only an explicit stop
+  ends shells. Starting an already running lane never rebuilds/restarts it.
+- Full local socket backends use REMOTEPAD2_LOCAL_SOCKET and keep SSH/version/
+  windows/static routes. REMOTEPAD2_WORKER_SOCKET remains API-only remote mode;
+  do not conflate them. REMOTEPAD2_GATEWAY_PORT is the public origin check.
+- Runtime sockets/logs/metadata: ~/.remotepad2/run. Main/nightly use managed,
+  detached worktrees in ~/work/remotepad2-lanes; dev uses this dev checkout.
+  Starting a stopped managed lane fetches its published SHA and refuses dirty
+  worktrees. No Git branch changes are made in the user's checkout.
+- apps/web/src/base.ts preserves the lane path for local APIs/assets/windows;
+  connection.ts preserves it for remote proxy calls and WebSockets. Raw fetch is
+  only for gateway-global /_gateway management APIs or already-prefixed URLs.
+- Version menu shows Start/Switch when opened through the gateway, preserving
+  ?w= and SSH target. Window layout is shared, while selected shell keys are
+  session.main/session.dev/session.nightly (legacy direct mode keeps session).
+- Gateway tests: pnpm test:gateway. They start 3 throwaway full backends over
+  Unix sockets behind one throwaway gateway on E2E_PORT; no live lane is touched.
+  Tests use portable ~/work/tmp paths (REMOTEPAD2_TEST_TMP overrides unit temp root).

@@ -138,3 +138,58 @@ UI regression checks: `pnpm build && pnpm test:e2e`. Run
 `E2E_CHANNEL=chrome pnpm test:e2e` with installed Chrome. Tests start an
 isolated backend on 6220 with HOME/fixtures under ~/work/tmp/remotepad2-e2e.
 Override E2E_PORT/E2E_WORK_ROOT to select another isolated location.
+
+## Channels and one local entry
+
+- `main` is the stable release and default GitHub branch. Development commits go to `dev`.
+- GitHub Actions validates `main`/`dev` pushes and PRs. Daily at **08:00 Asia/Shanghai**,
+  Nightly checks out `dev`, stamps `X.Y.Z-nightly.YYYYMMDD`, builds and runs unit,
+  UI and gateway tests, then publishes the validated snapshot to `nightly`.
+  A failed run keeps the previous nightly. Publication uses a normal fast-forward
+  push with the previous nightly as a parent; it never force-pushes.
+- Stable promotion is explicit: review the chosen snapshot, merge/release it to
+  `main` with a normal release version. Nightly never updates main automatically.
+
+The gateway replaces per-preview port links. The public default is **6020**:
+
+| URL | Instance |
+| --- | --- |
+| `http://127.0.0.1:6020/` | redirects to `/main/` |
+| `/main/` | stable |
+| `/dev/` | current development checkout |
+| `/nightly/` | latest validated daily snapshot |
+
+Each instance listens on a private Unix socket under `~/.remotepad2/run`;
+there are no internal HTTP ports to allocate. The gateway proxies HTML, APIs,
+file/HTML preview assets and terminal/Codex WebSockets. Windows and local SSH
+settings stay local. Versions → **Start/Switch** opens a lane in the current
+window, preserving `?w=` and the SSH selection; Ctrl/Cmd-click opens a new tab.
+Layout/window profiles are shared across channels; selected PTYs are tracked
+per channel because their processes belong to separate backends.
+
+```sh
+pnpm gateway              # one public listener; leave running
+pnpm lanes start main     # or click Start on the stopped lane's page
+pnpm lanes start dev
+pnpm lanes start nightly
+pnpm lanes status
+pnpm lanes stop nightly   # explicit stop ends that lane's shells
+```
+
+`dev` runs this checkout without switching its branch. Stable/nightly get
+managed detached worktrees under `~/work/remotepad2-lanes`. A stopped lane
+fetches its published branch when started. Starting a running lane leaves it
+untouched; publishing Git commits does not restart a running backend. Dirty
+managed worktrees are refused rather than overwritten. Build/start logs are
+under `~/.remotepad2/run/<channel>.log`.
+
+If the old standalone app already occupies 6020, the gateway refuses to bind
+and leaves it running. Moving that entry to the gateway requires an explicit
+stop of that old instance; it is never taken over automatically. The old direct
+`pnpm start` and optional Vite development entry remain supported for diagnostics.
+
+Overrides: `REMOTEPAD2_GATEWAY_PORT` changes the one public port;
+`REMOTEPAD2_RUN_DIR` changes the socket/log directory, and
+`REMOTEPAD2_LANES_DIR` changes the managed worktree root. Use the same gateway
+port for all lane commands. Gateway checks: `pnpm test:gateway` (or
+`E2E_CHANNEL=chrome pnpm test:gateway`).

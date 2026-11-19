@@ -1,0 +1,58 @@
+name: Nightly
+on:
+  schedule:
+    - cron: '0 0 * * *' # 08:00 Asia/Shanghai
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Stamp version from dev
+        run: node scripts/nightly-version.mjs
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - run: pnpm test:gateway
+      - name: Publish validated dev snapshot (fast-forward only)
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json
+          TREE=$(git write-tree)
+          DEV=$(git rev-parse HEAD)
+          if git show-ref --verify --quiet refs/remotes/origin/nightly; then
+            PREVIOUS=$(git rev-parse refs/remotes/origin/nightly)
+            if [ "$(git rev-parse "$PREVIOUS^{tree}")" = "$TREE" ]; then
+              echo 'This nightly snapshot is already published.'
+              exit 0
+            fi
+            NEXT=$(git commit-tree "$TREE" -p "$PREVIOUS" -p "$DEV" -m "nightly $(date -u +%Y%m%d) from dev ${DEV:0:7}")
+          else
+            NEXT=$(git commit-tree "$TREE" -p "$DEV" -m "nightly $(date -u +%Y%m%d) from dev ${DEV:0:7}")
+          fi
+          git push origin "$NEXT:refs/heads/nightly"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: nightly-playwright-traces
+          path: ~/work/tmp/remotepad2-e2e/results
+          if-no-files-found: ignore

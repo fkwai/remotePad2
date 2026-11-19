@@ -100,7 +100,7 @@ test('drag geometry survives hiding, reload and workspace session switching', as
   await layoutCheck(page, 'Terminal', true);
   expect(await page.locator('#editor').evaluate(el => el.getBoundingClientRect().height)).toBeCloseTo(height, 0);
   await page.getByRole('button', { name: 'RemotePad2', exact: true }).click();
-  await expect(page.locator('.version-info')).toContainText('dev');
+  await expect(page.locator('.version-info')).toContainText(/@[a-f0-9]{7,}/);
   const next = page.context().waitForEvent('page');
   await page.getByRole('button', { name: '+ New', exact: true }).click();
   const other = await next;

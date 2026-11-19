@@ -1,9 +1,10 @@
+import { localFetch } from '../base';
 import Papa from 'papaparse';
 import { workspaceUrl } from '../connection';
 
 let previewKey: Promise<string> | undefined;
 export async function previewUrl(path: string) {
-  previewKey ||= fetch('/api/preview-key').then(async (response) => {
+  previewKey ||= localFetch('/api/preview-key').then(async (response) => {
     if (!response.ok) throw new Error('Preview unavailable. Reload RemotePad.');
     return (await response.json()).key as string;
   });

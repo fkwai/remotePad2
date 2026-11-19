@@ -1,3 +1,4 @@
+import { tempRoot } from './temp.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
@@ -16,7 +17,7 @@ test('SSH input is parsed as arguments, never as a remote shell command', () => 
 });
 
 test('App follower subscribes and routes input to the original owner', async () => {
-  const home = await mkdtemp('/Users/kuaifang/work/tmp/rp2-ipc-');
+  const home = await mkdtemp(path.join(tempRoot, 'rp2-ipc-'));
   await mkdir(path.join(home, 'ipc'));
   const previous = process.env.CODEX_HOME;
   process.env.CODEX_HOME = home;
@@ -81,7 +82,7 @@ test('App incremental patches preserve array insertion and reject prototype path
 test('Codex metadata prefers the user name and native project assignment', async () => {
   const { DatabaseSync } = await import('node:sqlite');
   const { codexSessions } = await import('../apps/server/src/codex.ts');
-  const home = await mkdtemp('/Users/kuaifang/work/tmp/rp2-codex-metadata-');
+  const home = await mkdtemp(path.join(tempRoot, 'rp2-codex-metadata-'));
   const previous = process.env.CODEX_HOME;
   process.env.CODEX_HOME = home;
   try {

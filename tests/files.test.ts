@@ -1,3 +1,4 @@
+import { tempRoot } from './temp.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
@@ -7,7 +8,7 @@ import { registerFiles } from '../apps/server/src/files.ts';
 import { previewKey, previewRequest } from '../apps/server/src/preview-access.ts';
 
 test('folder listings, binary previews, sandbox headers and revision conflicts', async () => {
-  const root = await mkdtemp('/Users/kuaifang/work/tmp/rp2-files-');
+  const root = await mkdtemp(path.join(tempRoot, 'rp2-files-'));
   const app = Fastify();
   try {
     await registerFiles(app);
@@ -40,7 +41,7 @@ test('opaque preview frames only bypass origin checks with their capability on r
 test('Unix-socket health checks send their HTTP request and return the worker status', async () => {
   const { createServer } = await import('node:http');
   const { healthy } = await import('../apps/server/src/ssh.ts');
-  const root = await mkdtemp('/Users/kuaifang/work/tmp/rp2-health-');
+  const root = await mkdtemp(path.join(tempRoot, 'rp2-health-'));
   const socket = path.join(root, 'api.sock');
   let code = 200, requests = 0;
   const server = createServer((req, res) => { requests++; assert.equal(req.url, '/api/health'); setTimeout(() => { res.writeHead(code); res.end('{}'); }, 650); });
@@ -55,7 +56,7 @@ test('Unix-socket health checks send their HTTP request and return the worker st
 
 test('window profiles persist independently by machine and can forget default without ending shells', async () => {
   const { registerWindows } = await import('../apps/server/src/windows.ts');
-  const home = await mkdtemp('/Users/kuaifang/work/tmp/rp2-windows-');
+  const home = await mkdtemp(path.join(tempRoot, 'rp2-windows-'));
   const app = Fastify(); await registerWindows(app, home);
   try {
     await app.inject({ method: 'PUT', url: '/api/windows/default', payload: { ssh:'', name:'Local', state: {'panel-sizes':'{}'} } });

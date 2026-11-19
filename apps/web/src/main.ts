@@ -1,3 +1,4 @@
+import { channel } from './base';
 import { initializeWindow, startWindowSave } from './windows';
 import { menu } from './components/menu';
 import { Layout } from './components/layout';
@@ -63,7 +64,7 @@ function openSession(info: SessionInfo) {
     get('terminal-content').append(panel.element);
   }
   visibility.terminal = true;
-  localStorage.setItem(workspaceKey('session'), info.id);
+  localStorage.setItem(workspaceKey(channel ? 'session.' + channel : 'session'), info.id);
   renderTerminals();
   layout();
 }
@@ -76,7 +77,7 @@ async function closeSession(id: string) {
     terminals.delete(id);
     sessionList = sessionList.filter((s) => s.id !== id);
     if (id === activeSession) activeSession = [...terminals.keys()].at(-1) || '';
-    localStorage.setItem(workspaceKey('session'), activeSession);
+    localStorage.setItem(workspaceKey(channel ? 'session.' + channel : 'session'), activeSession);
     renderTerminals();
   } catch (error) { status((error as Error).message); }
 }
@@ -221,7 +222,7 @@ async function start() {
     const health = await api<{ hostname: string }>('/api/health');
     showMachine(health.hostname);
     await refresh();
-    const savedId = localStorage.getItem(workspaceKey('session'));
+    const savedId = localStorage.getItem(workspaceKey(channel ? 'session.' + channel : 'session'));
     if (savedId?.startsWith('app:')) {
       const info = await api<SessionInfo>('/api/sessions', { method: 'POST', body: JSON.stringify({ codexId: savedId.slice(4) }) });
       openSession(info);

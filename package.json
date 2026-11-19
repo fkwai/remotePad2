@@ -12,8 +12,11 @@
     "build": "pnpm typecheck && pnpm --filter @remotepad2/web build",
     "typecheck": "pnpm -r --if-present typecheck",
     "start": "pnpm --filter @remotepad2/server start",
+    "gateway": "apps/server/node_modules/.bin/tsx apps/server/src/lane-cli.ts gateway",
+    "lanes": "apps/server/node_modules/.bin/tsx apps/server/src/lane-cli.ts",
     "test": "apps/server/node_modules/.bin/tsx --test tests/*.test.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:gateway": "E2E_GATEWAY=1 playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1",

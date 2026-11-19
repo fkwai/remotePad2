@@ -11,7 +11,7 @@ const workerPath = /^\/api\/(?:health|files|file|preview|sessions|codex|navigati
 const workerSocket = /^\/ws\/(?:terminal|codex)\/[^/?]+$/;
 
 function localBrowser(req: FastifyRequest) {
-  if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.ip)) return false;
+  if (!(process.env.REMOTEPAD2_LOCAL_SOCKET && !req.ip) && !['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.ip)) return false;
   const host = req.headers.host;
   if (!host || !/^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(host)) return false;
   const origin = req.headers.origin;
