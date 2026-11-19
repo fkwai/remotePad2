@@ -17,7 +17,7 @@ export class FilesIndex {
   private mode: 'favorites' | 'repos' = 'favorites';
   private navigation: Navigation = { favorites: [], repos: [] };
   private generation = 0;
-  private rows = new Map<string, HTMLButtonElement>();
+  private rows = new Map<string, HTMLDivElement>();
   constructor(private open: (path: string) => void, private report: (path: string) => void, private openFolder: (path: string) => void) {
     this.element.className = 'index files-index';
     this.element.setAttribute('aria-label', 'Files Index');
@@ -39,16 +39,19 @@ export class FilesIndex {
     form.append(this.path);
     const actions = document.createElement('div');
     actions.className = 'index-modes';
-    actions.append(button('Open folder', () => this.openFolder(this.root)), button('↻', () => void this.load(this.root), 'Refresh tree'), button('★ Favorite', () => void this.pin('favorites'), 'Favorite current folder'),
-      button('◆ Repo', () => void this.pin('repos'), 'Add current Git repo'));
+    actions.append(button('↻', () => void this.load(this.root), 'Refresh tree'));
+    this.tree.oncontextmenu = (event) => {
+      if (event.target === this.tree) menu(event, [{ label: 'Open folder in Explorer', action: () => this.openFolder(this.root) }, { label: 'Refresh', action: () => void this.load(this.root) }]);
+    };
     this.error.className = 'error';
     this.tree.className = 'file-tree';
     this.element.append(heading, modes, this.pins, form, actions, this.error, this.tree);
+    window.addEventListener('navigation-changed', () => void this.refreshPins());
     void this.refreshPins();
     void this.load(localStorage.getItem(workspaceKey('directory')) || undefined);
   }
   private async refreshPins() {
-    try { this.navigation = await api<Navigation>('/api/navigation'); this.renderPins(); }
+    try { this.navigation = await api<Navigation>('/api/navigation'); this.renderPins(); this.renderTree(); }
     catch (error) { this.error.textContent = (error as Error).message; }
   }
   private renderPins() {
@@ -87,54 +90,83 @@ export class FilesIndex {
       return true;
     } catch (error) { this.error.textContent = (error as Error).message; }
   }
-  private async toggle(directory: string) {
+  private async toggle(directory: string, ensureOpen = false) {
+    const open = ensureOpen || !this.expanded.has(directory);
+    if (open) this.expanded.add(directory); else this.expanded.delete(directory);
+    this.renderTree();
+    if (!open) return;
     try {
-      if (this.expanded.has(directory)) this.expanded.delete(directory);
-      else {
-        this.listings.set(directory, await this.listing(directory));
-        this.expanded.add(directory);
-      }
+      this.listings.set(directory, await this.listing(directory));
       this.renderTree();
     } catch (error) { this.error.textContent = (error as Error).message; }
   }
   private renderTree() {
-    this.tree.replaceChildren();
     const root = this.listings.get(this.root);
     if (!root) return;
-    this.tree.append(button('..', () => void this.load(root.parent), 'Parent directory'));
-    const heading = document.createElement('div');
-    heading.className = 'tree-root';
-    heading.textContent = this.root.split('/').pop() || '/';
-    this.tree.append(heading);
-    const append = (directory: string, depth: number) => {
-      for (const item of this.listings.get(directory)?.entries || []) {
-        const row = this.rows.get(item.path) || button('', () => {});
-        this.rows.set(item.path, row);
-        row.textContent = (item.directory ? this.expanded.has(item.path) ? '▾ ' : '▸ ' : '  ') + item.name;
-        row.title = item.path;
-        row.onclick = (event) => {
-          this.selected = item.path;
-          if (item.directory) { if (event.detail !== 2) void this.toggle(item.path); }
-          else { this.open(item.path); this.renderTree(); }
-        };
-        row.ondblclick = () => { if (item.directory) this.openFolder(item.path); };
-        row.oncontextmenu = (event) => menu(event, [
-          { label: item.directory ? 'Open in Explorer' : 'Open', hint: item.directory ? 'Dbl-click' : undefined,
-            action: () => item.directory ? this.openFolder(item.path) : this.open(item.path) },
-          ...(item.directory ? [
-            { label: 'Browse as root', action: () => void this.load(item.path) },
-            { label: 'Add to Favorites', action: () => void this.pin('favorites', item.path) },
-            { label: 'Add to Repos', action: () => void this.pin('repos', item.path) },
-          ] : []),
-          { label: 'Refresh', action: () => void this.load(this.root) },
-        ]);
-        row.className = 'tree-row' + (this.selected === item.path ? ' selected' : '');
-        row.style.paddingLeft = (8 + depth * 14) + 'px';
-        if (item.directory) row.setAttribute('aria-expanded', String(this.expanded.has(item.path)));
-        this.tree.append(row);
-        if (item.directory && this.expanded.has(item.path)) append(item.path, depth + 1);
+    const nodes: HTMLElement[] = [];
+    let parent = this.tree.querySelector<HTMLButtonElement>(':scope > .tree-parent');
+    if (!parent) { parent = button('…', () => void this.load(this.listings.get(this.root)?.parent), 'Parent directory'); parent.className = 'tree-parent'; }
+    nodes.push(parent);
+    const pinned = new Set(this.navigation.favorites.map((item) => item.path));
+    const repos = new Set(this.navigation.repos.map((item) => item.path));
+    const append = (item: FileEntry, depth: number) => {
+      let row = this.rows.get(item.path);
+      if (!row) { row = document.createElement('div'); row.tabIndex = 0; this.rows.set(item.path, row); }
+      row.className = 'tree-row' + (this.selected === item.path ? ' selected' : '');
+      row.dataset.path = item.path;
+      row.title = item.path;
+      row.style.paddingLeft = (4 + depth * 14) + 'px';
+      row.onclick = (event) => {
+        this.selected = item.path;
+        if (item.directory) {
+          if (event.detail === 2) { void this.toggle(item.path, true); this.openFolder(item.path); }
+          else void this.toggle(item.path);
+        } else { this.open(item.path); this.renderTree(); }
+      };
+      row.onkeydown = (event) => { if (event.target === row && event.key === 'Enter') { event.preventDefault(); item.directory ? this.openFolder(item.path) : this.open(item.path); } };
+      row.oncontextmenu = (event) => { this.selected = item.path; this.renderTree(); menu(event, [
+        { label: item.directory ? 'Open in Explorer' : 'Open', hint: item.directory ? 'Dbl-click / Enter' : 'Enter', action: () => item.directory ? this.openFolder(item.path) : this.open(item.path) },
+        ...(item.directory ? [
+          { label: 'Browse as root', action: () => void this.load(item.path) },
+          { label: pinned.has(item.path) ? 'Remove from Favorites' : 'Add to Favorites', action: () => void this.pin('favorites', item.path, pinned.has(item.path)) },
+          { label: repos.has(item.path) ? 'Remove from Repos' : 'Add to Repos', action: () => void this.pin('repos', item.path, repos.has(item.path)) },
+        ] : []),
+        { label: 'Refresh', action: () => void this.load(this.root) },
+      ]); };
+      // Keep both the row and name nodes mounted across expansion and pin updates.
+      // Replacing them between clicks breaks native double-click counting.
+      let chevron = row.querySelector<HTMLButtonElement>('.tree-chevron');
+      let name = row.querySelector<HTMLElement>('.tree-name');
+      if (!name) {
+        chevron = button('', () => {}); chevron.className = 'tree-chevron';
+        name = document.createElement('span'); name.className = 'tree-name';
+        row.append(chevron, name);
       }
+      name.textContent = item.name;
+      chevron!.textContent = item.directory ? (this.expanded.has(item.path) ? '▾' : '▸') : '·';
+      chevron!.disabled = !item.directory;
+      chevron!.title = 'Expand or collapse folder';
+      chevron!.onclick = (event) => { event.stopPropagation(); this.selected = item.path; if (event.detail !== 2) void this.toggle(item.path); };
+      if (item.directory) row.setAttribute('aria-expanded', String(this.expanded.has(item.path)));
+      for (const [kind, label, symbol, on] of [
+        ['repos', 'Repo', '◆', repos.has(item.path)], ['favorites', 'Favorite', '★', pinned.has(item.path)],
+      ] as const) {
+        if (!item.directory) continue;
+        let control = row.querySelector<HTMLButtonElement>('.pin-' + kind);
+        if (!control) { control = button(symbol, () => {}); control.className = 'tree-pin pin-' + kind; row.append(control); }
+        control.classList.toggle('on', on);
+        control.title = (on ? 'Remove from ' : 'Add to ') + label;
+        control.setAttribute('aria-label', control.title + ': ' + item.name);
+        control.setAttribute('aria-pressed', String(on));
+        control.onclick = (event) => { event.stopPropagation(); void this.pin(kind, item.path, on); };
+      }
+      nodes.push(row);
+      if (item.directory && this.expanded.has(item.path)) for (const child of this.listings.get(item.path)?.entries || []) append(child, depth + 1);
     };
-    append(this.root, 0);
+    append({ name: this.root.split('/').pop() || '/', path: this.root, directory: true }, 0);
+    // Reconcile without detaching retained rows (including pointer targets).
+    const keep = new Set(nodes);
+    for (const child of Array.from(this.tree.children)) if (!keep.has(child as HTMLElement)) child.remove();
+    nodes.forEach((node, index) => { if (this.tree.children[index] !== node) this.tree.insertBefore(node, this.tree.children[index] || null); });
   }
 }

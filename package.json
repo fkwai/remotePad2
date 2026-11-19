@@ -12,10 +12,12 @@
     "build": "pnpm typecheck && pnpm --filter @remotepad2/web build",
     "typecheck": "pnpm -r --if-present typecheck",
     "start": "pnpm --filter @remotepad2/server start",
-    "test": "apps/server/node_modules/.bin/tsx --test tests/*.test.ts"
+    "test": "apps/server/node_modules/.bin/tsx --test tests/*.test.ts",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
-    "typescript": "^5.9.2",
-    "@types/node": "^22.18.0"
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^22.18.0",
+    "typescript": "^5.9.2"
   }
 }

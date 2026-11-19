@@ -1,3 +1,6 @@
+import { menu } from './components/menu';
+import { Layout } from './components/layout';
+import { workspaceMenu } from './components/workspaces';
 import type { FileContent, SessionInfo } from '@remotepad2/protocol';
 import { api, button } from './api';
 import { workspaceKey } from './connection';
@@ -13,7 +16,7 @@ import '@xterm/xterm/css/xterm.css';
 import './style.css';
 
 document.querySelector('#app')!.innerHTML = `
-<header><strong>RemotePad<span>2</span></strong><nav id="controls"></nav><div id="host"></div></header>
+<header><div id="version"></div><nav id="controls"></nav><div id="host"></div></header>
 <main id="workbench"><aside id="files-index"></aside><div id="workspace"><section id="editor" class="panel">
 <div class="tabs" id="editor-tabs"></div><div id="editor-content" class="panel-content"></div></section>
 <section id="terminal" class="panel"><div class="tabs" id="terminal-tabs"></div><div id="terminal-content" class="panel-content"></div></section></div><aside id="sessions-index"></aside></main>
@@ -25,27 +28,11 @@ const editors = new Map<string, EditorPanel | FolderPanel>();
 let activeSession = '';
 let activeFile = '';
 let sessionList: SessionInfo[] = [];
-const visibility: Record<string, boolean> = { files: true, sessions: true, editor: true, terminal: true };
-try {
-  const saved = JSON.parse(localStorage.getItem(workspaceKey('fixed-visibility')) || '{}');
-  for (const key of Object.keys(visibility)) if (typeof saved?.[key] === 'boolean') visibility[key] = saved[key];
-} catch { /* A malformed layout starts with the default components. */ }
-function layout() {
-  files.element.hidden = !visibility.files;
-  sessions.element.hidden = !visibility.sessions;
-  get('files-index').hidden = !visibility.files;
-  get('sessions-index').hidden = !visibility.sessions;
-  get('editor').hidden = !visibility.editor;
-  get('terminal').hidden = !visibility.terminal;
-  get('workbench').classList.toggle('has-index', visibility.files || visibility.sessions);
-  for (const control of Array.from(get('controls').querySelectorAll('button'))) control.setAttribute('aria-pressed', String(Boolean(visibility[control.dataset.component!])));
-  localStorage.setItem(workspaceKey('fixed-visibility'), JSON.stringify(visibility));
-}
-for (const [id, label] of [['files', 'Files Index'], ['sessions', 'Sessions Index'], ['editor', 'Editor'], ['terminal', 'Terminal']]) {
-  const control = button(label, () => { visibility[id] = !visibility[id]; layout(); });
-  control.dataset.component = id;
-  get('controls').append(control);
-}
+const panels = new Layout(get);
+const visibility = panels.visible;
+const layout = () => panels.apply();
+panels.menu(get('controls'));
+workspaceMenu(get('version'));
 function renderTerminals() {
   const tabs = [...terminals].map(([id, { info, panel }]) => {
     panel.element.hidden = id !== activeSession;
@@ -88,10 +75,17 @@ async function createSession() {
   catch (error) { status((error as Error).message); }
 }
 function renderEditors() {
+  localStorage.setItem(workspaceKey('editor-tabs'), JSON.stringify([...editors].map(([path, panel]) => panel instanceof FolderPanel ? { folder: panel.path } : { file: path })));
+  const active = editors.get(activeFile);
+  localStorage.setItem(workspaceKey('active-file'), active instanceof FolderPanel ? 'folder:' + active.path : activeFile);
   get('editor-tabs').replaceChildren(...[...editors].map(([path, editor]) => {
     editor.element.hidden = path !== activeFile;
     const tab = document.createElement('div');
-    tab.className = 'tab' + (path === activeFile ? ' active' : '');
+    tab.className = 'tab' + (editor instanceof FolderPanel ? ' folder-tab' : '') + (path === activeFile ? ' active' : '');
+    tab.oncontextmenu = (event) => menu(event, [
+      ...(editor instanceof FolderPanel ? [{ label: 'Refresh folder', action: () => editor.refresh() }] : []),
+      { label: 'Close', action: () => (tab.lastElementChild as HTMLButtonElement).click() },
+    ]);
     tab.append(button((editor.dirty ? '● ' : '') + (editor instanceof FolderPanel ? editor.label : path.split('/').pop()), () => { activeFile = path; renderEditors(); }, path),
       button('×', () => {
         if (editor.dirty && !confirm('Discard unsaved changes in ' + path + '?')) return;
@@ -161,6 +155,14 @@ async function refresh() {
 }
 async function start() {
   try {
+    const savedTabs = JSON.parse(localStorage.getItem(workspaceKey('editor-tabs')) || '[]');
+    const savedActive = localStorage.getItem(workspaceKey('active-file'));
+    const savedVisibility = { ...visibility };
+    for (const tab of Array.isArray(savedTabs) ? savedTabs : []) {
+      if (typeof tab.folder === 'string') openFolder(tab.folder);
+      else if (typeof tab.file === 'string') await openFile(tab.file);
+    }
+    if (savedActive && editors.has(savedActive)) { activeFile = savedActive; renderEditors(); }
     const health = await api<{ hostname: string }>('/api/health');
     connectionsButton(get('host'), status);
     await refresh();
@@ -168,14 +170,13 @@ async function start() {
     if (savedId?.startsWith('app:')) {
       const info = await api<SessionInfo>('/api/sessions', { method: 'POST', body: JSON.stringify({ codexId: savedId.slice(4) }) });
       openSession(info);
-      layout();
+      Object.assign(visibility, savedVisibility); layout();
       return;
     }
     const previous = sessionList.find((s) => s.id === savedId);
     if (previous) openSession(previous);
-    else if (sessionList.length) openSession(sessionList[0]);
     else await createSession();
-    layout();
+    Object.assign(visibility, savedVisibility); layout();
   } catch (error) { status((error as Error).message); }
 }
 window.addEventListener('beforeunload', (event) => {

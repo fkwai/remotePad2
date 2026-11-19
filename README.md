@@ -36,12 +36,20 @@ as the current OS user. It provides local access without an account system.
   Markdown/HTML, images, JSON/JSONL, CSV/TSV and log rendering. Debug capability will be added later.
 - **Terminal** attaches to a backend-owned PTY. Agent CLIs can run here.
 
-Header toggles hide or show each area. Files and sessions open in their own
+The **Layout** popover hides or shows each area. Drag the panel borders to
+resize; hidden panels keep their last dimensions. Files and sessions open in their own
 Editor and Terminal tabs. The fixed layout has Files Index on the left, Sessions Index on the right,
 and Editor above Terminal in the center. All four areas are initially visible.
 
 Files Index offers an expandable tree, Favorites and Repos. Existing RemotePad
 pins are copied once into ~/.remotepad2/navigation.json and managed separately.
+Each tree directory has ◆ Repo and ★ Favorite toggles, independent of expansion.
+
+Click **RemotePad2** at the top left for installed version/branch/commit and
+workspace sessions. Create, rename, switch or forget a workspace session here.
+Each machine and workspace session remembers panel sizes, visibility, directory,
+open Editor/Explorer tabs and the selected shell. Switching leaves shells running.
+The version view is read-only; it never changes Git branches or restarts a server.
 
 Sessions Index lists up to 200 unarchived Codex sessions using your custom
 title and project label. For a conversation owned by the running local Codex
@@ -56,8 +64,9 @@ it. Closing an App-linked view detaches that view and leaves the App running.
 
 ## SSH
 
-Click the computer name at the top right. Choose an alias from ~/.ssh/config
-(including Include files), or enter a host or SSH command:
+Click the local computer name at the top right for its details and connected
+remote machines. Expand **Add SSH connection** to choose an alias from
+~/.ssh/config (including Include files), or enter a host or SSH command:
 
 ```sh
 ssh -p 22 -i "/path/to/key" -J jump-host user@machine
@@ -91,14 +100,22 @@ switches between editable text and its viewer. Rendered Markdown and HTML run
 in sandboxed iframes with relative images, scripts and styles resolved through
 the selected machine. Binary previews allow up to 32 MB.
 
-Use **Open folder**, directory Enter, or a folder’s **Open in Explorer** context
+Use directory Enter or a folder’s **Open in Explorer** context
 menu to open a folder tab. The tree expands on a single click; double-click
-opens Explorer. Explorer items select on click and open through double-click
+opens Explorer and leaves the folder expanded, without a click-delay timer.
+Explorer items select on click (Ctrl/Cmd multi-select, Shift range) and open through double-click
 or the **Open** context menu. Its toolbar offers Icons, Details, parent and
-refresh controls. Files Index lists regular files and directories.
+refresh controls. Details shows file size and modification time; folder tab
+context menus also offer Refresh. Files Index lists regular files and directories.
 
 Files, sessions, editor and terminal views are separate modules. Future
 layout presets can compose these same components as an IDE or Agent Manager.
 Debugging and Agent-specific hooks will share explicit execution identities.
 
 Run `pnpm test` for the integration protocol checks.
+
+UI regression checks: `pnpm build && pnpm test:e2e`. Run
+`pnpm exec playwright install chromium` first, or use
+`E2E_CHANNEL=chrome pnpm test:e2e` with installed Chrome. Tests start an
+isolated backend on 6220 with HOME/fixtures under ~/work/tmp/remotepad2-e2e.
+Override E2E_PORT/E2E_WORK_ROOT to select another isolated location.

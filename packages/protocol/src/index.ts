@@ -7,7 +7,7 @@ export type TerminalEvent =
   | { type: 'output'; data: string }
   | { type: 'exit'; code: number }
   | { type: 'error'; message: string };
-export interface FileEntry { name: string; path: string; directory: boolean }
+export interface FileEntry { name: string; path: string; directory: boolean; size?: number; modifiedAt?: number }
 export interface FileContent { path: string; content: string; revision: string }
 export interface CodexSession { id: string; title: string; cwd: string; updatedAt: number; project?: string }
 export interface PinnedFolder { path: string; name: string; branch?: string }

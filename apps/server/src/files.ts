@@ -37,15 +37,19 @@ export async function registerFiles(app: FastifyInstance) {
     } catch (error) { return reply.code(404).send({ error: (error as Error).message }); }
   });
 
-  app.get<{ Querystring: { path?: string } }>('/api/files', async (req, reply) => {
+  app.get<{ Querystring: { path?: string; details?: string } }>('/api/files', async (req, reply) => {
     try {
       const directory = path.resolve(req.query.path || os.homedir());
       if (!(await stat(directory)).isDirectory()) return reply.code(400).send({ error: 'Choose a directory.' });
       const entries = await readdir(directory, { withFileTypes: true });
-      return { path: directory, parent: path.dirname(directory), entries: entries
+      const listing = entries
         .filter((e) => e.isDirectory() || e.isFile())
         .map((e) => ({ name: e.name, path: path.join(directory, e.name), directory: e.isDirectory() }))
-        .sort((a, b) => Number(b.directory) - Number(a.directory) || a.name.localeCompare(b.name)) };
+        .sort((a, b) => Number(b.directory) - Number(a.directory) || a.name.localeCompare(b.name));
+      const detailed = req.query.details === '1' ? await Promise.all(listing.map(async (entry) => {
+        try { const info = await stat(entry.path); return { ...entry, size: info.size, modifiedAt: info.mtimeMs }; } catch { return entry; }
+      })) : listing;
+      return { path: directory, parent: path.dirname(directory), entries: detailed };
     } catch (error) { return reply.code(400).send({ error: String((error as Error).message) }); }
   });
   app.get<{ Querystring: { path: string } }>('/api/file', async (req, reply) => {

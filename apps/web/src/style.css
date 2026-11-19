@@ -97,3 +97,45 @@ footer { padding: 6px 16px; color: #a7afb6; font-size: 11px; border-top: 1px sol
 .editor-toolbar button, .folder-toolbar button { white-space: nowrap; }
 
 .files-index > .index-modes { flex-wrap: wrap; }
+/* Workbench chrome and persistent panel geometry. */
+.popover-host { position: relative; }
+.popover { position: absolute; top: calc(100% + 7px); left: 0; width: 320px; max-width: calc(100vw - 24px); max-height: 75vh; overflow: auto; z-index: 30; background: #202428; border: 1px solid #41494f; border-radius: 6px; padding: 12px; box-shadow: 0 10px 30px #0008; font-size: 12px; }
+#host .popover { left: auto; right: 0; width: 360px; }
+.popover h3 { font-size: 11px; color: #a7afb6; margin: 8px 0; }
+.popover p { margin: 6px 0; }
+.popover small { display: block; color: #8e999f; line-height: 1.5; margin: 8px 0; overflow-wrap: anywhere; }
+.popover > button, .popover form button, .popover details button, .popover > div > button { display: block; width: 100%; text-align: left; }
+.popover label { display: flex; align-items: center; padding: 7px 0; gap: 10px; }
+.popover label input { width: auto; margin: 0; accent-color: #a6d3b4; }
+.popover details { border-top: 1px solid #41494f; padding-top: 10px; margin-top: 10px; }
+.popover summary { cursor: pointer; padding: 6px 0; }
+.popover form { margin-top: 12px; }
+.ssh-aliases { max-height: 240px; overflow: auto; }
+.workspace-row { display: flex; align-items: center; }
+.workspace-row > button:first-child { flex: 1; min-width: 0; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; text-align: left; }
+.version-info { padding: 4px 0 12px; border-bottom: 1px solid #41494f; color: #a6d3b4; }
+#version > button { font-weight: 600; }
+#workspace:has(> #editor[hidden]):has(> #terminal[hidden]) { display: none; }
+.resize-handle { flex-shrink: 0; background: #252b30; touch-action: none; z-index: 2; }
+.resize-handle.vertical { width: 5px; cursor: col-resize; }
+.resize-handle.horizontal { height: 5px; cursor: row-resize; }
+.resize-handle:hover, .resize-handle:focus { background: #709c80; outline: none; }
+.resize-shield { position: fixed; inset: 0; z-index: 1000; user-select: none; }
+.resize-shield.vertical { cursor: col-resize; }
+.resize-shield.horizontal { cursor: row-resize; }
+.index .tree-row { display: flex; align-items: center; min-height: 28px; cursor: pointer; }
+.tree-row:hover { background: #20282a; }
+.tree-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.index .tree-row button { width: 23px; min-width: 23px; padding: 4px 2px; text-align: center; }
+.tree-chevron { color: #9da8ae; }
+.tree-chevron:disabled { opacity: .5; cursor: default; }
+.tree-pin { opacity: .35; font-size: 11px; }
+.tree-row:hover .tree-pin, .tree-row:focus-within .tree-pin, .tree-pin.on { opacity: 1; }
+.tree-pin.on { color: #b5d9a5; }
+.folder-tab > button:first-child { color: #93b9db; font-style: italic; }
+.folder-size, .folder-modified, .folder-detail-heading { display: none; }
+.folder-name { min-width: 0; overflow-wrap: anywhere; }
+.folder-items.details .folder-item { display: grid; grid-template-columns: 22px minmax(100px, 1fr) 80px 170px; align-items: center; gap: 6px; }
+.folder-items.details .folder-size, .folder-items.details .folder-modified { display: block; color: #8e999f; font-size: 11px; }
+.folder-items.details .folder-detail-heading { display: grid; grid-template-columns: minmax(128px, 1fr) 86px 170px; padding: 6px 8px; border-bottom: 1px solid #41494f; color: #8e999f; position: sticky; top: -8px; background: #151719; }
+@media(max-width:700px) { #host { display: block; min-width: 0; } #host > button { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
