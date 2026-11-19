@@ -12,11 +12,13 @@ export class EditorPanel {
   private mode?: HTMLButtonElement;
   private scale = 1;
   private saving = false;
+  private info = document.createElement('span');
+  private drawGeneration = 0;
   dirty = false;
   constructor(private file: FileContent, private changed: () => void, private status: (message: string) => void) {
     this.element.className = 'editor-body';
     const toolbar = document.createElement('div');
-    toolbar.className = 'editor-toolbar';
+    toolbar.className = 'editor-status';
     const image = isImage(file.path);
     const canRender = image || /\.(md|markdown|html?|json|jsonl|ndjson|csv|tsv|log)$/i.test(file.path);
     this.preview.className = 'rendered-view';
@@ -26,9 +28,9 @@ export class EditorPanel {
     this.text.setAttribute('aria-label', 'File content');
     this.text.value = file.content;
     this.text.oninput = () => { this.dirty = this.text.value !== this.file.content; changed(); };
-    if (!image) toolbar.append(button('Save', () => void this.save(), 'Ctrl/⌘+S'));
     if (canRender && !image) {
-      this.mode = button('Source / Render', () => this.toggle(), 'Ctrl/⌘+L');
+      this.mode = button('</>', () => this.toggle(), 'Show source / rendered · Ctrl/⌘+L');
+      this.mode.setAttribute('aria-label', 'Show source');
       toolbar.append(this.mode);
     }
     if (image) {
@@ -56,7 +58,9 @@ export class EditorPanel {
     this.preview.addEventListener('wheel', (event) => {
       if (image && event.ctrlKey) { event.preventDefault(); this.zoom(event.deltaY < 0 ? 0.1 : -0.1); }
     }, { passive: false });
-    this.element.append(toolbar, this.text, this.preview);
+    this.info.className = 'editor-status-info'; this.info.textContent = file.path.split('/').pop() || '';
+    toolbar.append(this.info);
+    this.element.append(this.text, this.preview, toolbar);
     if (canRender) this.toggle();
   }
   private zoom(delta: number) {
@@ -68,14 +72,22 @@ export class EditorPanel {
     this.rendered = !this.rendered;
     this.text.hidden = this.rendered;
     this.preview.hidden = !this.rendered;
-    this.mode?.setAttribute('aria-pressed', String(this.rendered));
-    if (!this.rendered) return;
+    this.mode?.setAttribute('aria-pressed', String(!this.rendered));
+    this.mode?.setAttribute('aria-label', this.rendered ? 'Show source' : 'Show rendered');
+    this.info.textContent = this.rendered ? 'Rendered' : 'Source';
+    if (!this.rendered) { this.text.focus(); return; }
+    await this.draw();
+  }
+  private async draw() {
+    const generation = ++this.drawGeneration;
     this.preview.replaceChildren();
     const content = this.text.value;
     try {
       if (isImage(this.file.path)) {
         const image = document.createElement('img');
-        image.src = await previewUrl(this.file.path);
+        const url = await previewUrl(this.file.path);
+        if (generation !== this.drawGeneration) return;
+        image.src = url;
         image.alt = this.file.path.split('/').pop() || '';
         image.onerror = () => this.status('Image could not be loaded: ' + this.file.path);
         this.preview.classList.add('image-view');
@@ -86,6 +98,7 @@ export class EditorPanel {
         const html = /\.html?$/i.test(this.file.path);
         frame.setAttribute('sandbox', html ? 'allow-scripts allow-downloads' : 'allow-downloads');
         const base = new URL(await previewUrl(this.file.path), location.origin).href;
+        if (generation !== this.drawGeneration) return;
         const style = '<style>body{font:13px/1.65 system-ui;margin:16px;overflow-wrap:anywhere;color:#dce2e6;background:#191c1f}h1{font-size:22px}h2{font-size:18px}pre{overflow:auto;padding:10px;background:#111416}code{font:12px/1.6 monospace}img{max-width:100%}a{color:#a6d3b4}table{border-collapse:collapse}td,th{border:1px solid #485058;padding:5px 10px}</style>';
         frame.srcdoc = '<base href="' + base + '">' + (html ? content : style + marked.parse(content, { async: false }));
         this.preview.append(frame);
@@ -112,6 +125,14 @@ export class EditorPanel {
       this.preview.textContent = (error as Error).message;
       this.status('Cannot render ' + this.file.path + '. Source is available.');
     }
+  }
+  snapshot() { return { file: this.file, content: this.text.value }; }
+  sync(state: ReturnType<EditorPanel['snapshot']>) {
+    const changed = this.text.value !== state.content;
+    this.file = state.file;
+    if (changed) this.text.value = state.content;
+    this.dirty = this.text.value !== this.file.content;
+    if (changed && this.rendered) void this.draw();
   }
   async save() {
     if (this.saving || isImage(this.file.path)) return;

@@ -43,9 +43,9 @@ function execSsh(input: string, command: string, body?: Buffer) {
 }
 export const sshSocket = (host: string) => connections.get(host)?.socket;
 export const connectedHosts = () => [...connections.keys()];
-async function healthy(socketPath: string) {
+export async function healthy(socketPath: string) {
   return new Promise<boolean>((resolve) => {
-    const req = request({ socketPath, path: '/api/health', timeout: 500 }, (res) => { res.resume(); resolve(res.statusCode === 200); });
+    const req = request({ socketPath, path: '/api/health', timeout: 5000 }, (res) => { res.resume(); resolve(res.statusCode === 200); });
     req.on('timeout', () => req.destroy()); req.on('error', () => resolve(false)); req.end();
   });
 }
@@ -110,12 +110,13 @@ async function connect(input: string) {
   child.stderr.on('data', (data) => { failure = (failure + data).slice(-1500); });
   child.on('error', (error) => { failure = error.message; ended = true; });
   child.once('close', () => { ended = true; if (connections.get(input)?.child === child) connections.delete(input); void rm(dir, { recursive: true, force: true }); });
-  for (let i = 0; i < 60 && !ended; i++) {
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline && !ended) {
     if (await healthy(socket)) { connections.set(input, { socket, child }); return; }
     await delay(250);
   }
   child.kill();
-  throw new Error(failure.trim() || 'Remote backend did not start.');
+  throw new Error(failure.trim() || 'SSH tunnel health check timed out after 30 seconds. The remote backend may still be running; retry the connection.');
 }
 export function connectSsh(input: string) {
   parseSsh(input);

@@ -13,22 +13,25 @@ export function connectionsButton(host: HTMLElement, status: (message: string) =
     const input = document.createElement('input'); input.setAttribute('aria-label', 'SSH command');
     input.placeholder = 'ssh -J jump -p 22 user@host';
     const submit = button('Connect', () => {}); submit.type = 'submit';
-    const progress = document.createElement('div'); progress.setAttribute('role', 'status');
+    const progress = document.createElement('div'); progress.setAttribute('role', 'status'); progress.className = 'connection-progress';
+    current.append(progress);
     const connect = async (command: string) => {
       for (const control of Array.from(current.querySelectorAll('button'))) control.disabled = true;
-      progress.textContent = 'Connecting · preparing remote backend…';
+      progress.textContent = 'Connecting to ' + command + ' · preparing remote backend…';
+      status(progress.textContent);
+      progress.scrollIntoView({ block: 'nearest' });
       try {
         const response = await fetch('/api/ssh/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ host: command }) });
         const data = await response.json(); if (!response.ok) throw new Error(data.error);
         const url = new URL(location.href); url.searchParams.set('ssh', command); if (profile !== 'default') url.searchParams.set('w', profile);
         location.assign(url.href);
       } catch (error) {
-        progress.textContent = (error as Error).message;
+        progress.textContent = (error as Error).message; status('SSH ' + command + ': ' + progress.textContent);
         for (const control of Array.from(current.querySelectorAll('button'))) control.disabled = false;
       }
     };
     form.onsubmit = (event) => { event.preventDefault(); if (input.value.trim()) void connect(input.value.trim()); };
-    form.append(input, submit); add.append(form); current.append(add, progress);
+    form.append(input, submit); add.append(form); current.append(add);
     void fetch('/api/ssh/hosts').then(async (response) => {
       const data = await response.json(); if (!response.ok) throw new Error(data.error);
       if (!current.isConnected) return;

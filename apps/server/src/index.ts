@@ -1,4 +1,5 @@
 import os from 'node:os';
+import { registerWindows } from './windows.ts';
 import { registerVersion } from './version.ts';
 import { previewKey, previewRequest } from './preview-access.ts';
 import path from 'node:path';
@@ -29,7 +30,7 @@ app.addHook('onRequest', async (request, reply) => {
   }
 });
 app.get('/api/preview-key', async () => ({ key: previewKey }));
-if (!workerSocket) registerVersion(app);
+if (!workerSocket) { registerVersion(app); registerWindows(app); }
 app.get('/api/health', async () => ({ ok: true, hostname: os.hostname() }));
 await registerTerminal(app);
 await registerCodexApp(app);

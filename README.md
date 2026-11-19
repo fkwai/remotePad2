@@ -36,7 +36,9 @@ as the current OS user. It provides local access without an account system.
   Markdown/HTML, images, JSON/JSONL, CSV/TSV and log rendering. Debug capability will be added later.
 - **Terminal** attaches to a backend-owned PTY. Agent CLIs can run here.
 
-The **Layout** popover hides or shows each area. Drag the panel borders to
+The right-header **Layout** popover mirrors the screen: Files left, Sessions
+right, Editor above Terminal in the middle. Its four tiles hide/show each area;
+grey bottom tiles are inactive. Drag the panel borders to
 resize; hidden panels keep their last dimensions. Files and sessions open in their own
 Editor and Terminal tabs. The fixed layout has Files Index on the left, Sessions Index on the right,
 and Editor above Terminal in the center. All four areas are initially visible.
@@ -45,10 +47,14 @@ Files Index offers an expandable tree, Favorites and Repos. Existing RemotePad
 pins are copied once into ~/.remotepad2/navigation.json and managed separately.
 Each tree directory has ◆ Repo and ★ Favorite toggles, independent of expansion.
 
-Click **RemotePad2** at the top left for installed version/branch/commit and
-workspace sessions. Create, rename, switch or forget a workspace session here.
-Each machine and workspace session remembers panel sizes, visibility, directory,
-open Editor/Explorer tabs and the selected shell. Switching leaves shells running.
+Click **RemotePad2** at the top left for installed version/branch/commit,
+local branch versions and **Windows**. **+ New** and window rows open another
+browser window; right-click offers rename or open in this window. × forgets
+its saved layout, including the default window.
+Window profiles persist in ~/.remotepad2/windows.json on the local backend,
+with browser storage as a live cache. Each machine and window remembers panel
+sizes, visibility, directory, Editor/Explorer tabs, split state, hidden-file
+filter and the selected shell. Switching leaves shells running.
 The version view is read-only; it never changes Git branches or restarts a server.
 
 Sessions Index lists up to 200 unarchived Codex sessions using your custom
@@ -96,11 +102,18 @@ memory, with a browser warning before leaving.
 
 The current Editor supports UTF-8 text up to 2 MB. Save checks the file's
 revision to catch external edits. Code uses a compact 12px font. Source / Render
-switches between editable text and its viewer. Rendered Markdown and HTML run
+uses the bottom-left **</>** status button (Ctrl/⌘+L) to switch editable text
+and its viewer. Save is in the right-click menu / Ctrl/⌘+S, without a toolbar
+button. **◫** in the tab strip opens a draggable second editor pane; buffers
+and save state stay synchronized between both panes. Rendered Markdown and HTML run
 in sandboxed iframes with relative images, scripts and styles resolved through
 the selected machine. Binary previews allow up to 32 MB.
 
-Use directory Enter or a folder’s **Open in Explorer** context
+The tree address input is a popup opened with **Go to path**, beside Refresh.
+The **.*** button shows/hides dotfiles in tree and Explorer. The root and
+selected ancestor directories stay frozen at the top of the tree while scrolling.
+
+Use directory-popup Enter or a folder’s **Open in Explorer** context
 menu to open a folder tab. The tree expands on a single click; double-click
 opens Explorer and leaves the folder expanded, without a click-delay timer.
 Explorer items select on click (Ctrl/Cmd multi-select, Shift range) and open through double-click

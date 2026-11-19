@@ -10,8 +10,8 @@ export function registerVersion(app: FastifyInstance) {
     const git = async (...args: string[]) => (await run('git', ['-C', root, ...args], { timeout: 2000 })).stdout.trim();
     const version = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')).version;
     try {
-      const [branch, commit, changes] = await Promise.all([git('branch', '--show-current'), git('rev-parse', '--short', 'HEAD'), git('status', '--porcelain')]);
-      return { version, branch: branch || 'detached', commit, dirty: Boolean(changes) };
+      const [branch, commit, changes, refs] = await Promise.all([git('branch', '--show-current'), git('rev-parse', '--short', 'HEAD'), git('status', '--porcelain'), git('for-each-ref', '--format=%(refname:short) %(objectname:short)', 'refs/heads/')]);
+      return { version, branch: branch || 'detached', commit, dirty: Boolean(changes), branches: refs.split('\n').filter(Boolean).map((line) => { const [name, commit] = line.split(' '); return { name, commit }; }) };
     } catch { return { version, branch: 'installed', commit: 'unknown', dirty: false }; }
   });
 }

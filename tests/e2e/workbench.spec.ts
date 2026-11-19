@@ -10,13 +10,15 @@ const row = (page: Page, target: string) => page.locator('.tree-row').filter({ h
 async function browse(page: Page) {
   await page.goto('/');
   await expect(page.locator('.xterm')).toBeVisible();
+  await page.getByRole('button', { name: 'Go to path', exact: true }).click();
   await page.getByRole('textbox', { name: 'Directory', exact: true }).fill(fixtures);
   await page.getByRole('textbox', { name: 'Directory', exact: true }).press('Enter');
   await expect(page.getByRole('textbox', { name: 'Explorer directory' })).toHaveValue(fixtures);
 }
 async function layoutCheck(page: Page, name: string, checked: boolean) {
   await page.getByRole('button', { name: 'Layout', exact: true }).click();
-  await page.getByRole('checkbox', { name, exact: true }).setChecked(checked);
+  const control = page.getByRole('button', { name, exact: true });
+  if ((await control.getAttribute('aria-pressed')) !== String(checked)) await control.click();
   await page.keyboard.press('Escape');
 }
 async function drag(page: Page, label: string, dx: number, dy = 0) {
@@ -25,6 +27,7 @@ async function drag(page: Page, label: string, dx: number, dy = 0) {
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await page.mouse.down(); await page.mouse.move(bounds.x + bounds.width / 2 + dx, bounds.y + bounds.height / 2 + dy, { steps: 10 }); await page.mouse.up();
 }
+test.beforeEach(async ({ request }) => { await request.delete('/api/windows/default'); });
 test.beforeAll(async () => {
   await mkdir(repo, { recursive: true });
   execFileSync('git', ['init', repo], { stdio: 'ignore' });
@@ -98,14 +101,17 @@ test('drag geometry survives hiding, reload and workspace session switching', as
   expect(await page.locator('#editor').evaluate(el => el.getBoundingClientRect().height)).toBeCloseTo(height, 0);
   await page.getByRole('button', { name: 'RemotePad2', exact: true }).click();
   await expect(page.locator('.version-info')).toContainText('dev');
-  page.once('dialog', dialog => dialog.accept('Second workspace'));
-  await page.getByRole('button', { name: '+ New workspace session' }).click();
-  await expect(page).toHaveURL(/w=/);
-  await expect(page.locator('.xterm')).toBeVisible();
-  expect(await page.evaluate(() => { const id = new URLSearchParams(location.search).get('w'); return localStorage.getItem('rp2.window.' + id + '.session'); })).not.toBe(shell);
-  expect(await page.locator('#files-index').evaluate(el => el.getBoundingClientRect().width)).toBeCloseTo(250, 0);
-  await page.getByRole('button', { name: 'RemotePad2', exact: true }).click();
-  await page.getByRole('button', { name: 'Default', exact: true }).click();
+  const next = page.context().waitForEvent('page');
+  await page.getByRole('button', { name: '+ New', exact: true }).click();
+  const other = await next;
+  await expect(other).toHaveURL(/w=/);
+  await expect(other.locator('.xterm')).toBeVisible();
+  expect(await other.evaluate(() => { const id = new URLSearchParams(location.search).get('w'); return localStorage.getItem('rp2.window.' + id + '.session'); })).not.toBe(shell);
+  expect(await other.locator('#files-index').evaluate(el => el.getBoundingClientRect().width)).toBeCloseTo(250, 0);
+  await other.goto('/');
+  await expect(other.getByRole('textbox', { name: 'Explorer directory' })).toHaveValue(fixtures);
+  expect(await other.locator('#files-index').evaluate(el => el.getBoundingClientRect().width)).toBeCloseTo(left, 0);
+  await other.close();
   await expect(page).not.toHaveURL(/w=/);
   await expect(page.getByRole('textbox', { name: 'Explorer directory' })).toHaveValue(fixtures);
   expect(await page.locator('#files-index').evaluate(el => el.getBoundingClientRect().width)).toBeCloseTo(left, 0);
@@ -121,4 +127,58 @@ test('machine menu starts with local details and reveals SSH aliases only on req
   await menu.locator('summary').click();
   await expect(menu.getByRole('button', { name: 'test-cloud', exact: true })).toBeVisible();
   await expect(menu.getByRole('textbox', { name: 'SSH command' })).toBeVisible();
+});
+
+test('file address is a popup; hidden files and frozen roots survive scrolling', async ({page}) => {
+  await writeFile(path.join(fixtures, '.hidden-file'), 'hidden');
+  for (let n=0;n<65;n++) await writeFile(path.join(fixtures, 'long-' + n.toString().padStart(2,'0') + '.txt'), 'line');
+  await browse(page);
+  await expect(page.getByRole('textbox', {name:'Directory',exact:true})).toHaveCount(0);
+  await expect(row(page,'.hidden-file')).toHaveCount(0);
+  await page.getByRole('button',{name:'Show hidden files',exact:true}).click();
+  await expect(row(page,'.hidden-file')).toBeVisible();
+  const tree = page.locator('.file-tree');
+  await tree.evaluate(el=>el.scrollTop=500);
+  const rootRow=page.locator('.tree-row').filter({has:page.locator('.tree-name',{hasText:/^fixtures$/})});
+  const bounds=(await tree.boundingBox())!, sticky=(await rootRow.boundingBox())!;
+  expect(sticky.y).toBeGreaterThanOrEqual(bounds.y); expect(sticky.y).toBeLessThan(bounds.y+60);
+  await page.reload();
+  await expect(page.getByRole('button',{name:'Show hidden files',exact:true})).toHaveAttribute('aria-pressed','true');
+});
+
+test('editor uses bottom source toggle, menu save and shared editable split panes', async ({page}) => {
+  await browse(page);
+  await row(page,'README.md').locator('.tree-name').click();
+  await expect(page.getByRole('button',{name:'Save',exact:true})).toHaveCount(0);
+  const mode=page.getByRole('button',{name:'Show source',exact:true});
+  await expect(mode.locator('..')).toHaveClass('editor-status');
+  await mode.click();
+  await page.getByRole('textbox',{name:'File content'}).fill('# Shared buffer\n');
+  await page.getByRole('button',{name:'Split the editor in two',exact:true}).click();
+  await expect(page.frameLocator('#secondary-content iframe').getByRole('heading')).toHaveText('Shared buffer');
+  await page.locator('#secondary-content').getByRole('button',{name:'Show source',exact:true}).click();
+  await page.locator('#secondary-content').getByRole('textbox',{name:'File content'}).fill('# Edited on right\n');
+  await expect(page.locator('#editor-content').getByRole('textbox',{name:'File content'})).toHaveValue('# Edited on right\n');
+  await page.locator('#secondary-content').getByRole('textbox',{name:'File content'}).press('ControlOrMeta+s');
+  await expect(page.getByRole('status')).toContainText('Saved');
+  await page.reload();
+  await expect(page.locator('#secondary-editor')).toBeVisible();
+  await expect(page.frameLocator('#editor-content iframe').getByRole('heading')).toHaveText('Edited on right');
+});
+
+test('SSH progress and failure stay visible while aliases remain expanded', async ({page}) => {
+  let release:()=>void;
+  const pending=new Promise<void>(resolve=>release=resolve);
+  await page.route('**/api/ssh/connect',async route=>{await pending; await route.fulfill({status:502,contentType:'application/json',body:JSON.stringify({error:'Test forwarding failure'})});});
+  await page.goto('/');
+  await expect(page.locator('#host > button')).not.toHaveText('Local machine');
+  await page.locator('#host > button').click();
+  await page.locator('#host summary').click();
+  await page.getByRole('button',{name:'test-cloud',exact:true}).click();
+  const progress=page.locator('.connection-progress');
+  await expect(progress).toBeInViewport(); await expect(progress).toContainText('Connecting to test-cloud');
+  await expect(page.locator('#status')).toContainText('Connecting to test-cloud');
+  release!();
+  await expect(progress).toContainText('Test forwarding failure');
+  await expect(page.getByRole('button',{name:'test-cloud',exact:true})).toBeEnabled();
 });

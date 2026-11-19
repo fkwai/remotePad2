@@ -36,3 +36,34 @@ test('opaque preview frames only bypass origin checks with their capability on r
   assert.equal(allowed('/api/file?path=' + previewKey), false);
   assert.equal(allowed('/api/preview/' + previewKey + '/tmp/a.png', 'PUT'), false);
 });
+
+test('Unix-socket health checks send their HTTP request and return the worker status', async () => {
+  const { createServer } = await import('node:http');
+  const { healthy } = await import('../apps/server/src/ssh.ts');
+  const root = await mkdtemp('/Users/kuaifang/work/tmp/rp2-health-');
+  const socket = path.join(root, 'api.sock');
+  let code = 200, requests = 0;
+  const server = createServer((req, res) => { requests++; assert.equal(req.url, '/api/health'); setTimeout(() => { res.writeHead(code); res.end('{}'); }, 650); });
+  await new Promise<void>((resolve) => server.listen(socket, resolve));
+  try {
+    assert.equal(await healthy(socket), true);
+    code = 503;
+    assert.equal(await healthy(socket), false);
+    assert.equal(requests, 2);
+  } finally { await new Promise<void>((resolve) => server.close(() => resolve())); await rm(root, { recursive: true, force: true }); }
+});
+
+test('window profiles persist independently by machine and can forget default without ending shells', async () => {
+  const { registerWindows } = await import('../apps/server/src/windows.ts');
+  const home = await mkdtemp('/Users/kuaifang/work/tmp/rp2-windows-');
+  const app = Fastify(); await registerWindows(app, home);
+  try {
+    await app.inject({ method: 'PUT', url: '/api/windows/default', payload: { ssh:'', name:'Local', state: {'panel-sizes':'{}'} } });
+    await app.inject({ method: 'PUT', url: '/api/windows/default', payload: { ssh:'cloudKuai', name:'Remote', state: {directory:'/root'} } });
+    assert.equal((await app.inject('/api/windows')).json().windows.length, 2);
+    await app.inject({ method:'DELETE',url:'/api/windows/default'});
+    const rows=(await app.inject('/api/windows')).json().windows;
+    assert.equal(rows.length,1); assert.equal(rows[0].ssh,'cloudKuai');
+    assert.equal((await app.inject({method:'PUT',url:'/api/windows/bad',payload:{state:{a:42}}})).statusCode,400);
+  } finally { await app.close(); await rm(home,{recursive:true,force:true}); }
+});

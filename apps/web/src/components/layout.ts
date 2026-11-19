@@ -56,15 +56,20 @@ export class Layout {
   }
   menu(host: HTMLElement) {
     popover(host, 'Layout', (body) => {
-      const heading = document.createElement('h3'); heading.textContent = 'Panels'; body.append(heading);
+      body.classList.add('layout-popover');
+      const grid = document.createElement('div'); grid.className = 'layout-grid';
       for (const area of Object.keys(names) as Area[]) {
-        const row = document.createElement('label');
-        const check = document.createElement('input'); check.type = 'checkbox'; check.checked = this.visible[area];
-        check.onchange = () => { this.visible[area] = check.checked; this.apply(); };
-        row.append(check, names[area]); body.append(row);
+        const control = button(names[area], () => { this.visible[area] = !this.visible[area]; this.apply(); control.setAttribute('aria-pressed', String(this.visible[area])); });
+        control.className = 'layout-cell layout-' + area;
+        control.setAttribute('aria-pressed', String(this.visible[area])); grid.append(control);
       }
-      body.append(button('Reset layout', () => { this.sizes = { left: 250, right: 280, split: 0.6 }; for (const key of Object.keys(names) as Area[]) this.visible[key] = true; this.apply(); this.save(); for (const check of Array.from(body.querySelectorAll('input'))) check.checked = true; }));
-      const hint = document.createElement('small'); hint.textContent = 'Drag panel edges to resize. Sizes are saved for this workspace session.'; body.append(hint);
+      for (let n = 0; n < 3; n++) { const empty = document.createElement('div'); empty.className = 'layout-unused'; empty.setAttribute('aria-hidden', 'true'); grid.append(empty); }
+      body.append(grid, button('Reset layout', () => {
+        this.sizes = { left: 250, right: 280, split: 0.6 };
+        for (const key of Object.keys(names) as Area[]) this.visible[key] = true;
+        this.apply(); this.save();
+        for (const control of Array.from(grid.querySelectorAll('button'))) control.setAttribute('aria-pressed', 'true');
+      }));
     });
   }
   apply() {

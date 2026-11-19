@@ -9,14 +9,23 @@ Terminal-first web workbench, developed in this repository on dev.
 - Four component types live in apps/web/src/components: Files Index, Sessions
   Index, Editor and Terminal. The workbench in main.ts composes their instances.
 - Fixed layout: Files Index on the left, Sessions Index on the right, Editor
-  above Terminal in the center. Layout popover controls panel visibility. Editor
+  above Terminal in the center. Right-header Layout popover uses a spatial grid: left Files, right Sessions,
+  center-top Editor, center-bottom Terminal; grey bottom cells are inactive.
+  Its four buttons toggle panel visibility. Editor
   and Terminal have their own tabs. Drag the three separators to resize; hiding
   a panel preserves its geometry, including across reloads.
 - Editor defaults to rendered Markdown/HTML, images, JSON/JSONL, CSV/TSV and logs.
-  Source / Render switches editable text; code uses a 12px font. Markdown/HTML
+  The bottom-left </> status button switches source/rendered (Ctrl/⌘+L);
+  Save exists only in context menus / Ctrl/⌘+S, with no editor top toolbar.
+  Code uses a 12px font. The tab-strip ◫ opens a draggable second editor, with
+  shared dirty buffers and saves across panes; split state/ratio are restored. Markdown/HTML
   use opaque sandbox frames. Preview capability paths preserve relative assets
   locally and through SSH without allowing sandbox access to normal APIs.
-- Folder Explorer opens from directory Enter or tree right-click Open in
+- File tree address input lives in the Go to path popover beside Refresh;
+  .* toggles dotfiles in both tree and Explorer and persists per window.
+  File tree is its own scroll container: parent row, root and selected ancestors
+  stick to the top while the rest scrolls.
+- Folder Explorer opens from directory-popup Enter or tree right-click Open in
   Explorer (double-click / Enter shortcuts). No Open folder toolbar button.
   Tree rows keep their DOM identity: click toggles immediately; the second
   click ensures expansion and opens Explorer without any click-delay timer.
@@ -49,11 +58,16 @@ Terminal-first web workbench, developed in this repository on dev.
   start-turn v2). It is version-dependent and must fail visibly on incompatibility.
 - Unowned Codex histories use the installed CLI via codex resume. RemotePad2
   does not edit the Codex database. The owning App or CLI writes its history.
-- Left RemotePad2 popover shows read-only installed version/branch/commit
-  from local /api/version and manages named workspace sessions (?w=). Each
-  machine + session keeps panel sizes/visibility, directory, editor tabs and
-  shell selection in localStorage. Switching/forgetting does not stop shells;
-  unsaved buffers remain memory-only. Default session keeps legacy storage keys.
+- Left RemotePad2 wordmark matches the original mark/type/version/branch badge.
+  The version popover shows installed version, local branch heads and Windows.
+  + New and window rows open another browser window; right-click offers same-
+  window open and rename. × forgets the saved layout (including default).
+- Local /api/windows stores window snapshots in ~/.remotepad2/windows.json,
+  keyed by machine + window id (?w=). Browser storage is the live cache; boot
+  restores server state before constructing layout. Snapshots include geometry,
+  visibility, directory, editor tabs/split, hidden-file filter and shell selection.
+  Switching/forgetting does not end shells. Unsaved buffers stay memory-only.
+  ?reset=1 skips restoration; forgetting current window cancels its save timer.
 - Right header always names the local machine. Its Computers menu starts with
   user/platform/home and connected remotes; Add SSH connection is collapsed
   until clicked, then reveals config aliases (including Includes) and command input.
@@ -64,6 +78,9 @@ Terminal-first web workbench, developed in this repository on dev.
   mismatched pnpm is bootstrapped at the version in package.json into
   ~/.remotepad2/tools, without changing global tools or shell configuration.
   A persistent private Unix-socket backend owns remote PTYs; SSH is transport.
+  Local health probes allow 5 seconds per request (jump RTT can exceed 500ms),
+  with a 30-second total tunnel deadline. Connection progress/errors appear
+  above the alias list and in the main status bar, even while the list is open.
 - The worker exposes files/navigation/sessions/Codex on the target. Browser
   URLs and localStorage are machine-scoped. Local SSH settings stay local.
 - pnpm test checks IPC ownership/input routing/patching and SSH argument parsing.

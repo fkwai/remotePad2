@@ -1,4 +1,5 @@
 import type { FileEntry } from '@remotepad2/protocol';
+import { workspaceKey } from '../connection';
 import { api, button } from '../api';
 import { menu } from './menu';
 
@@ -41,6 +42,7 @@ export class FolderPanel {
       ]);
     };
     this.element.append(toolbar, this.listing);
+    window.addEventListener('hidden-files-changed', () => { if (this.element.isConnected) this.refresh(); });
     void this.load(directory);
   }
   private async pin(kind: 'favorites' | 'repos', path: string) {
@@ -67,7 +69,7 @@ export class FolderPanel {
       this.current = result.path;
       this.address.value = result.path;
       this.label = (result.path.split('/').pop() || '/') + '/';
-      this.entries = result.entries; this.selected.clear(); this.anchor = -1;
+      this.entries = result.entries.filter((entry) => localStorage.getItem(workspaceKey('show-hidden')) === 'true' || !entry.name.startsWith('.')); this.selected.clear(); this.anchor = -1;
       this.changed();
       this.listing.replaceChildren();
       const heading = document.createElement('div'); heading.className = 'folder-detail-heading';

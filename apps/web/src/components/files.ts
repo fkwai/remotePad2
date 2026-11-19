@@ -1,4 +1,5 @@
 import type { FileEntry, Navigation } from '@remotepad2/protocol';
+import { popover } from './popover';
 import { workspaceKey } from '../connection';
 import { menu } from './menu';
 import { api, button } from '../api';
@@ -6,7 +7,7 @@ import { api, button } from '../api';
 interface Listing { path: string; parent: string; entries: FileEntry[] }
 export class FilesIndex {
   readonly element = document.createElement('section');
-  private path = document.createElement('input');
+  private showHidden = localStorage.getItem(workspaceKey('show-hidden')) === 'true';
   private tree = document.createElement('div');
   private pins = document.createElement('div');
   private error = document.createElement('div');
@@ -33,19 +34,30 @@ export class FilesIndex {
       control.setAttribute('aria-pressed', String(this.mode === kind));
       modes.append(control);
     }
-    const form = document.createElement('form');
-    this.path.setAttribute('aria-label', 'Directory');
-    form.onsubmit = (event) => { event.preventDefault(); void this.load(this.path.value).then((loaded) => { if (loaded) this.openFolder(this.root); }); };
-    form.append(this.path);
-    const actions = document.createElement('div');
-    actions.className = 'index-modes';
+    const actions = document.createElement('div'); actions.className = 'file-actions';
     actions.append(button('↻', () => void this.load(this.root), 'Refresh tree'));
+    const address = document.createElement('div'); actions.append(address);
+    const addressButton = popover(address, 'Go to path', (body, close) => {
+      const form = document.createElement('form');
+      const input = document.createElement('input'); input.setAttribute('aria-label', 'Directory'); input.value = this.root;
+      const submit = button('Go', () => {}); submit.type = 'submit';
+      form.onsubmit = (event) => { event.preventDefault(); void this.load(input.value).then((loaded) => { if (loaded) { this.openFolder(this.root); close(); } }); };
+      form.append(input, submit); body.append(form); input.focus(); input.select();
+    });
+    addressButton.textContent = '⌁'; addressButton.setAttribute('aria-label', 'Go to path'); addressButton.title = 'Go to path';
+    const hidden = button('.*', () => {
+      this.showHidden = !this.showHidden; hidden.setAttribute('aria-pressed', String(this.showHidden));
+      localStorage.setItem(workspaceKey('show-hidden'), String(this.showHidden)); this.renderTree();
+      window.dispatchEvent(new Event('hidden-files-changed'));
+    }, 'Show hidden files');
+    hidden.setAttribute('aria-label', 'Show hidden files'); hidden.setAttribute('aria-pressed', String(this.showHidden));
+    actions.append(hidden);
     this.tree.oncontextmenu = (event) => {
       if (event.target === this.tree) menu(event, [{ label: 'Open folder in Explorer', action: () => this.openFolder(this.root) }, { label: 'Refresh', action: () => void this.load(this.root) }]);
     };
     this.error.className = 'error';
     this.tree.className = 'file-tree';
-    this.element.append(heading, modes, this.pins, form, actions, this.error, this.tree);
+    this.element.append(heading, modes, this.pins, actions, this.error, this.tree);
     window.addEventListener('navigation-changed', () => void this.refreshPins());
     void this.refreshPins();
     void this.load(localStorage.getItem(workspaceKey('directory')) || undefined);
@@ -81,7 +93,6 @@ export class FilesIndex {
       const result = await this.listing(directory);
       if (generation !== this.generation) return;
       this.root = result.path;
-      this.path.value = result.path;
       this.report(result.path);
       this.listings.set(result.path, result);
       this.expanded.add(result.path);
@@ -112,10 +123,11 @@ export class FilesIndex {
     const append = (item: FileEntry, depth: number) => {
       let row = this.rows.get(item.path);
       if (!row) { row = document.createElement('div'); row.tabIndex = 0; this.rows.set(item.path, row); }
-      row.className = 'tree-row' + (this.selected === item.path ? ' selected' : '');
+      row.className = 'tree-row' + (item.directory && (depth === 0 || this.selected.startsWith(item.path + '/')) ? ' frozen-root' : '') + (this.selected === item.path ? ' selected' : '');
       row.dataset.path = item.path;
       row.title = item.path;
       row.style.paddingLeft = (4 + depth * 14) + 'px';
+      row.style.top = (28 + depth * 28) + 'px';
       row.onclick = (event) => {
         this.selected = item.path;
         if (item.directory) {
@@ -161,7 +173,7 @@ export class FilesIndex {
         control.onclick = (event) => { event.stopPropagation(); void this.pin(kind, item.path, on); };
       }
       nodes.push(row);
-      if (item.directory && this.expanded.has(item.path)) for (const child of this.listings.get(item.path)?.entries || []) append(child, depth + 1);
+      if (item.directory && this.expanded.has(item.path)) for (const child of this.listings.get(item.path)?.entries || []) { if (this.showHidden || !child.name.startsWith('.')) append(child, depth + 1); }
     };
     append({ name: this.root.split('/').pop() || '/', path: this.root, directory: true }, 0);
     // Reconcile without detaching retained rows (including pointer targets).
