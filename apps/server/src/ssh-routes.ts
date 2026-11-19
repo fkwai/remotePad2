@@ -5,7 +5,7 @@ import { request } from 'node:http';
 import { createConnection } from 'node:net';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import WebSocket, { type RawData } from 'ws';
-import { closeSsh as closeSshConnections, connectedHosts as connectedSshHosts, connectSsh, sshSocket as socketFor, parseSsh } from './ssh.ts';
+import { closeSsh as closeSshConnections, connectedHosts as connectedSshHosts, connectSsh, sshProgress, sshSocket as socketFor, parseSsh } from './ssh.ts';
 
 const workerPath = /^\/api\/(?:health|files|file|preview|sessions|codex|navigation)(?:\/|\?|$)/;
 const workerSocket = /^\/ws\/(?:terminal|codex)\/[^/?]+$/;
@@ -40,7 +40,7 @@ export async function registerSshRoutes(app: FastifyInstance) {
     }));
 
     router.get<{ Params: { host: string } }>('/api/ssh/:host/status', async (req) => ({
-      connected: Boolean(socketFor(req.params.host)),
+      connected: Boolean(socketFor(req.params.host)), ...sshProgress(req.params.host),
     }));
 
     router.post<{ Body: { host?: string } }>('/api/ssh/connect', async (req, reply) => {

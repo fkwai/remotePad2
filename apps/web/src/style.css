@@ -191,3 +191,6 @@ footer { padding: 6px 16px; color: #a7afb6; font-size: 11px; border-top: 1px sol
 .version-branch-row small { margin: 0; }
 
 .version-pop-head > button, .version-windows-head > button { width: auto !important; margin-left: auto; }
+button.icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 5px; flex-shrink: 0; }
+#layout-menu .layout-popover > .icon-button { display: flex; width: 28px; margin-left: auto; }
+#host > button.remote-target { color: #a6d3b4; background: #7ee0c510; max-width: 35vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

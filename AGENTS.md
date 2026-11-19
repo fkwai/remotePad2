@@ -11,7 +11,8 @@ Terminal-first web workbench, developed in this repository on dev.
 - Fixed layout: Files Index on the left, Sessions Index on the right, Editor
   above Terminal in the center. Right-header Layout popover uses a spatial grid: left Files, right Sessions,
   center-top Editor, center-bottom Terminal; grey bottom cells are inactive.
-  Its four buttons toggle panel visibility. Editor
+  Its four buttons toggle panel visibility. Layout and reset use compact icon
+  buttons with accessible labels/tooltips; tree and Explorer refresh do too. Editor
   and Terminal have their own tabs. Drag the three separators to resize; hiding
   a panel preserves its geometry, including across reloads.
 - Editor defaults to rendered Markdown/HTML, images, JSON/JSONL, CSV/TSV and logs.
@@ -68,7 +69,11 @@ Terminal-first web workbench, developed in this repository on dev.
   visibility, directory, editor tabs/split, hidden-file filter and shell selection.
   Switching/forgetting does not end shells. Unsaved buffers stay memory-only.
   ?reset=1 skips restoration; forgetting current window cancels its save timer.
-- Right header always names the local machine. Its Computers menu starts with
+- Right header names the active SSH target while remote, the local hostname
+  while local. Async local-host discovery must never overwrite the SSH label.
+  Machine controls mount before workspace health checks so reconnect stays
+  available if a remote backend is unavailable. Tooltip includes remote hostname.
+  Its Computers menu starts with
   user/platform/home and connected remotes; Add SSH connection is collapsed
   until clicked, then reveals config aliases (including Includes) and command input.
 - SSH parsing accepts a config alias, user@host, or ssh with -p/-i/-J.
@@ -81,6 +86,9 @@ Terminal-first web workbench, developed in this repository on dev.
   Local health probes allow 5 seconds per request (jump RTT can exceed 500ms),
   with a 30-second total tunnel deadline. Connection progress/errors appear
   above the alias list and in the main status bar, even while the list is open.
+  /api/ssh/:host/status reports phase/start time; the UI polls phases with elapsed
+  seconds during connect. Bootstrap reports UID on its existing connection,
+  avoiding another SSH handshake just to run id -u.
 - The worker exposes files/navigation/sessions/Codex on the target. Browser
   URLs and localStorage are machine-scoped. Local SSH settings stay local.
 - pnpm test checks IPC ownership/input routing/patching and SSH argument parsing.

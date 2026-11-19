@@ -42,6 +42,7 @@ const visibility = panels.visible;
 const layout = () => panels.apply();
 panels.menu(get('layout-menu'));
 workspaceMenu(get('version'));
+const showMachine = connectionsButton(get('host'), status);
 function renderTerminals() {
   const tabs = [...terminals].map(([id, { info, panel }]) => {
     panel.element.hidden = id !== activeSession;
@@ -218,7 +219,7 @@ async function start() {
     if (savedSecondary && editors.has(savedSecondary)) secondaryFile = savedSecondary;
     renderEditors();
     const health = await api<{ hostname: string }>('/api/health');
-    connectionsButton(get('host'), status);
+    showMachine(health.hostname);
     await refresh();
     const savedId = localStorage.getItem(workspaceKey('session'));
     if (savedId?.startsWith('app:')) {

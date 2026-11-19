@@ -1,3 +1,4 @@
+import { iconControl } from './icons';
 import type { FileEntry } from '@remotepad2/protocol';
 import { workspaceKey } from '../connection';
 import { api, button } from '../api';
@@ -29,7 +30,7 @@ export class FolderPanel {
     const icons = button('▦', () => { this.details = false; this.updateMode(); }, 'Icons'); icons.setAttribute('aria-label', 'Icons');
     const details = button('☷', () => { this.details = true; this.updateMode(); }, 'Details'); details.setAttribute('aria-label', 'Details');
     const up = button('↑', () => void this.load(this.current.split('/').slice(0, -1).join('/') || '/'), 'Parent directory');
-    const refresh = button('↻', () => this.refresh(), 'Refresh folder');
+    const refresh = iconControl(button('', () => this.refresh()), 'Refresh folder', 'refresh');
     toolbar.append(up, this.address, icons, details, refresh);
     for (const control of [up, icons, details, refresh]) control.type = 'button';
     this.listing.className = 'folder-items';

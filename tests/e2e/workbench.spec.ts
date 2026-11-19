@@ -169,6 +169,7 @@ test('editor uses bottom source toggle, menu save and shared editable split pane
 test('SSH progress and failure stay visible while aliases remain expanded', async ({page}) => {
   let release:()=>void;
   const pending=new Promise<void>(resolve=>release=resolve);
+  await page.route('**/api/ssh/test-cloud/status', route=>route.fulfill({json:{phase:'Installing backend dependencies',startedAt:Date.now()-3000}}));
   await page.route('**/api/ssh/connect',async route=>{await pending; await route.fulfill({status:502,contentType:'application/json',body:JSON.stringify({error:'Test forwarding failure'})});});
   await page.goto('/');
   await expect(page.locator('#host > button')).not.toHaveText('Local machine');
@@ -178,7 +179,40 @@ test('SSH progress and failure stay visible while aliases remain expanded', asyn
   const progress=page.locator('.connection-progress');
   await expect(progress).toBeInViewport(); await expect(progress).toContainText('Connecting to test-cloud');
   await expect(page.locator('#status')).toContainText('Connecting to test-cloud');
+  await expect(progress).toContainText('Installing backend dependencies');
+  await expect(progress).toContainText('s');
   release!();
   await expect(progress).toContainText('Test forwarding failure');
   await expect(page.getByRole('button',{name:'test-cloud',exact:true})).toBeEnabled();
+});
+
+test('SSH target stays in header after local-host discovery; layout/reset/refresh are icons', async ({page}) => {
+  let unavailable = false;
+  await page.route('**/api/ssh/cloudKuai/proxy/**', async route => {
+    const url = new URL(route.request().url());
+    const suffix = url.pathname.split('/proxy/')[1];
+    if (suffix === 'health') return unavailable ? route.fulfill({status:503,json:{error:'SSH disconnected'}}) : route.fulfill({json:{ok:true,hostname:'remote-worker'}});
+    const response = await route.fetch({url:url.origin+'/api/'+suffix+url.search});
+    await route.fulfill({response});
+  });
+  await page.goto('/?ssh=cloudKuai');
+  await expect(page.locator('#host > button')).toHaveText('cloudKuai');
+  await page.locator('#host > button').click();
+  await expect(page.locator('#host .popover')).toContainText(os.hostname());
+  await expect(page.locator('#host > button')).toHaveText('cloudKuai');
+  await expect(page.locator('#host > button')).toHaveAttribute('title',/remote-worker/);
+  await page.keyboard.press('Escape');
+  const layout=page.getByRole('button',{name:'Layout',exact:true});
+  await expect(layout).toHaveText(''); await expect(layout.locator('svg')).toBeVisible();
+  await layout.click();
+  await expect(page.getByRole('button',{name:'Reset layout',exact:true})).toHaveText('');
+  await page.keyboard.press('Escape');
+  const refresh=page.getByRole('button',{name:'Refresh tree',exact:true});
+  await expect(refresh).toHaveText(''); await expect(refresh.locator('svg')).toBeVisible();
+  unavailable = true;
+  await page.reload();
+  await expect(page.locator('#status')).toContainText('SSH disconnected');
+  await expect(page.locator('#host > button')).toHaveText('cloudKuai');
+  await page.locator('#host > button').click();
+  await expect(page.getByRole('button',{name:'Switch to local',exact:true})).toBeVisible();
 });

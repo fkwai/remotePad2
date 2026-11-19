@@ -1,3 +1,4 @@
+import { iconControl } from './icons';
 import { workspaceKey } from '../connection';
 import { popover } from './popover';
 import { button } from '../api';
@@ -55,7 +56,7 @@ export class Layout {
     window.addEventListener('resize', () => this.apply());
   }
   menu(host: HTMLElement) {
-    popover(host, 'Layout', (body) => {
+    const toggle = popover(host, 'Layout', (body) => {
       body.classList.add('layout-popover');
       const grid = document.createElement('div'); grid.className = 'layout-grid';
       for (const area of Object.keys(names) as Area[]) {
@@ -64,13 +65,14 @@ export class Layout {
         control.setAttribute('aria-pressed', String(this.visible[area])); grid.append(control);
       }
       for (let n = 0; n < 3; n++) { const empty = document.createElement('div'); empty.className = 'layout-unused'; empty.setAttribute('aria-hidden', 'true'); grid.append(empty); }
-      body.append(grid, button('Reset layout', () => {
+      body.append(grid, iconControl(button('', () => {
         this.sizes = { left: 250, right: 280, split: 0.6 };
         for (const key of Object.keys(names) as Area[]) this.visible[key] = true;
         this.apply(); this.save();
         for (const control of Array.from(grid.querySelectorAll('button'))) control.setAttribute('aria-pressed', 'true');
-      }));
+      }), 'Reset layout', 'refresh'));
     });
+    iconControl(toggle, 'Layout', 'layout');
   }
   apply() {
     for (const [area, id] of [['files', 'files-index'], ['sessions', 'sessions-index'], ['editor', 'editor'], ['terminal', 'terminal']] as const) this.get(id).hidden = !this.visible[area];

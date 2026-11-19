@@ -2,7 +2,7 @@ import { profile, sshTarget } from '../connection';
 import { button } from '../api';
 import { popover } from './popover';
 
-export function connectionsButton(host: HTMLElement, status: (message: string) => void) {
+export function connectionsButton(host: HTMLElement, status: (message: string) => void, hostname?: string) {
   const toggle = popover(host, 'Computers', (current) => {
     const info = document.createElement('div'); info.textContent = 'Loading local machine…'; current.append(info);
     const active = document.createElement('div'); current.append(active);
@@ -19,6 +19,18 @@ export function connectionsButton(host: HTMLElement, status: (message: string) =
       for (const control of Array.from(current.querySelectorAll('button'))) control.disabled = true;
       progress.textContent = 'Connecting to ' + command + ' · preparing remote backend…';
       status(progress.textContent);
+      const started = Date.now();
+      let finished = false;
+      let checking = false;
+      const poll = window.setInterval(() => {
+        if (checking) return; checking = true;
+        void fetch('/api/ssh/' + encodeURIComponent(command) + '/status').then((response) => response.json()).then((data) => {
+          if (finished) return;
+          const elapsed = Math.floor((Date.now() - (data.startedAt || started)) / 1000);
+          const message = 'Connecting to ' + command + ' · ' + (data.phase || 'Preparing remote backend') + ' · ' + elapsed + 's';
+          progress.textContent = message; status(message);
+        }).catch(() => {}).finally(() => { checking = false; });
+      }, 750);
       progress.scrollIntoView({ block: 'nearest' });
       try {
         const response = await fetch('/api/ssh/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ host: command }) });
@@ -28,7 +40,7 @@ export function connectionsButton(host: HTMLElement, status: (message: string) =
       } catch (error) {
         progress.textContent = (error as Error).message; status('SSH ' + command + ': ' + progress.textContent);
         for (const control of Array.from(current.querySelectorAll('button'))) control.disabled = false;
-      }
+      } finally { finished = true; window.clearInterval(poll); }
     };
     form.onsubmit = (event) => { event.preventDefault(); if (input.value.trim()) void connect(input.value.trim()); };
     form.append(input, submit); add.append(form); current.append(add);
@@ -49,6 +61,9 @@ export function connectionsButton(host: HTMLElement, status: (message: string) =
       if (!data.hosts.length) aliases.textContent = 'No SSH config hosts found.';
     }).catch((error) => { info.textContent = 'Machine information unavailable'; status(error.message); });
   });
-  toggle.textContent = 'Local machine';
-  void fetch('/api/ssh/hosts').then((r) => r.json()).then((data) => { toggle.textContent = data.local.hostname; toggle.title = sshTarget ? 'Current remote: ' + sshTarget : 'Local machine'; }).catch(() => {});
+  toggle.textContent = sshTarget || 'Local machine';
+  toggle.title = sshTarget ? 'SSH: ' + sshTarget + (hostname ? ' · ' + hostname : '') : 'Local machine';
+  toggle.classList.toggle('remote-target', Boolean(sshTarget));
+  void fetch('/api/ssh/hosts').then((r) => r.json()).then((data) => { if (!sshTarget) { toggle.textContent = data.local.hostname; toggle.title = 'Local machine'; } }).catch(() => {});
+  return (remoteHostname: string) => { if (sshTarget) toggle.title = 'SSH: ' + sshTarget + ' · ' + remoteHostname; };
 }

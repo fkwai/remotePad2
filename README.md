@@ -36,7 +36,7 @@ as the current OS user. It provides local access without an account system.
   Markdown/HTML, images, JSON/JSONL, CSV/TSV and log rendering. Debug capability will be added later.
 - **Terminal** attaches to a backend-owned PTY. Agent CLIs can run here.
 
-The right-header **Layout** popover mirrors the screen: Files left, Sessions
+The right-header **Layout** icon opens a popover that mirrors the screen: Files left, Sessions
 right, Editor above Terminal in the middle. Its four tiles hide/show each area;
 grey bottom tiles are inactive. Drag the panel borders to
 resize; hidden panels keep their last dimensions. Files and sessions open in their own
@@ -70,13 +70,19 @@ it. Closing an App-linked view detaches that view and leaves the App running.
 
 ## SSH
 
-Click the local computer name at the top right for its details and connected
+The top-right label shows the current SSH target when remote (hover for its
+actual hostname) and the local hostname otherwise. Click it for its details and connected
 remote machines. Expand **Add SSH connection** to choose an alias from
 ~/.ssh/config (including Include files), or enter a host or SSH command:
 
 ```sh
 ssh -p 22 -i "/path/to/key" -J jump-host user@machine
 ```
+
+Connection progress shows the current phase and elapsed seconds: SSH login,
+checking/installing the backend, opening the tunnel and health validation.
+A matching backend is reused; new backend revisions install once. Jump-host
+handshakes can account for most connection time.
 
 The connection uses your existing OpenSSH keys and known hosts. Authenticate
 and verify a new host in Terminal first if needed. The first connection

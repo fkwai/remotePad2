@@ -1,4 +1,5 @@
 import type { FileEntry, Navigation } from '@remotepad2/protocol';
+import { iconControl } from './icons';
 import { popover } from './popover';
 import { workspaceKey } from '../connection';
 import { menu } from './menu';
@@ -35,7 +36,7 @@ export class FilesIndex {
       modes.append(control);
     }
     const actions = document.createElement('div'); actions.className = 'file-actions';
-    actions.append(button('↻', () => void this.load(this.root), 'Refresh tree'));
+    actions.append(iconControl(button('', () => void this.load(this.root)), 'Refresh tree', 'refresh'));
     const address = document.createElement('div'); actions.append(address);
     const addressButton = popover(address, 'Go to path', (body, close) => {
       const form = document.createElement('form');
