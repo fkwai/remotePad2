@@ -97,11 +97,24 @@ Terminal-first web workbench, developed in this repository on dev.
   in ~/.remotepad2/ssh-machines.json, shared across lanes. GET /api/ssh/hosts
   includes saved rows; POST /api/ssh/machines and DELETE /api/ssh/machines/:id
   are local-only, validated with the same argument parser as Connect.
-- Connecting opens a read-only SSH process log in a Terminal tab; bootstrap
-  stderr and the tunnel command are streamed through cursor-based status polling.
-  Closing the log only disposes the view; it never cancels SSH or ends a shell.
+- Connect creates an ordinary local PTY session (kind ssh-connect), opens it
+  in Terminal and runs /bin/bash -x <private-script> for packaging and setup. Both local SSH
+  invocations and remote bootstrap commands are traced where they execute;
+  raw stdout/stderr and interactive /dev/tty authentication use that same PTY.
+  POST /api/ssh/connect returns its terminal immediately; status polls only
+  readiness/phase, never a transcript. SSH terminals always use local WS/API
+  even when launched from a remote workbench. Shell returns after setup and
+  remains usable; browser closure never ends it. Closing the tab ends the shell
+  and cancels an unfinished command. A successful -fN ControlMaster transport
+  is owned separately by SSH management, so closing its setup shell leaves
+  remote workspaces/PTYs connected. Local backend shutdown explicitly stops
+  masters via their private control sockets; remote workers remain alive.
   Success opens a new browser tab retaining lane, ?w= and setting ?ssh=; the
-  original workspace stays open. Popup-blocked browsers get an explicit link.
+  original workspace stays open. Local windows restore the selected SSH setup
+  terminal like any shell; remote windows keep their remote-shell selection. A ↗ link on the setup terminal tab supports
+  popup-blocked browsers. No read-only connection-log component exists.
+- Escape closes an open popover in capture phase and consumes the key before
+  the underlying terminal receives it (avoids entering shell vi command mode).
 - SSH parsing accepts a config alias, user@host, or ssh with -p/-i/-J.
   Arguments go directly to OpenSSH; arbitrary remote commands are rejected.
 - ssh.ts installs a versioned API backend under ~/.remotepad2/backend/<channel>/<revision> on the
@@ -112,9 +125,10 @@ Terminal-first web workbench, developed in this repository on dev.
   Local health probes allow 5 seconds per request (jump RTT can exceed 500ms),
   with a 30-second total tunnel deadline. Connection progress/errors appear
   above the alias list and in the main status bar, even while the list is open.
-  /api/ssh/:host/status reports phase/start time; the UI polls phases with elapsed
+  /api/ssh/:host/status reports terminal, phase and start time; the UI polls phases with elapsed
   seconds during connect. Bootstrap reports UID on its existing connection,
-  avoiding another SSH handshake just to run id -u.
+  avoiding another SSH handshake just to run id -u. New host confirmations and
+  passphrase/password prompts appear in the real setup terminal.
 - The worker exposes files/navigation/sessions/Codex on the target. Browser
   URLs and localStorage are machine-scoped. Local SSH settings stay local.
 - pnpm test checks IPC ownership/input routing/patching and SSH argument parsing.

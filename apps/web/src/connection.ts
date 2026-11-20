@@ -6,7 +6,7 @@ export const workspaceKey = (key: string) => machineKey((profile === 'default' ?
 export function workspaceUrl(url: string) {
   return localUrl(sshTarget ? '/api/ssh/' + encodeURIComponent(sshTarget) + '/proxy/' + url.slice(5) : url);
 }
-export function workspaceSocket(path: string) {
-  const prefix = sshTarget ? '/ws/ssh/' + encodeURIComponent(sshTarget) + path.slice(3) : path;
+export function workspaceSocket(path: string, local = false) {
+  const prefix = sshTarget && !local ? '/ws/ssh/' + encodeURIComponent(sshTarget) + path.slice(3) : path;
   return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${localUrl(prefix)}`;
 }

@@ -168,25 +168,19 @@ test('editor uses bottom source toggle, menu save and shared editable split pane
   await expect(page.frameLocator('#editor-content iframe').getByRole('heading')).toHaveText('Edited on right');
 });
 
-test('SSH progress and failure stay visible while aliases remain expanded', async ({page}) => {
-  let release:()=>void;
-  const pending=new Promise<void>(resolve=>release=resolve);
-  await page.route('**/api/ssh/test-cloud/status*', route=>route.fulfill({json:{runId:'failed-attempt',phase:'Installing backend dependencies',startedAt:Date.now()-3000,logs:[{seq:1,text:'$ ssh test-cloud\r\nInstalling backend dependencies\r\n'}]}}));
-  await page.route('**/api/ssh/connect',async route=>{await pending; await route.fulfill({status:502,contentType:'application/json',body:JSON.stringify({error:'Test forwarding failure'})});});
-  await page.goto('/');
-  await expect(page.locator('#host > button')).not.toHaveText('Local machine');
-  await page.locator('#host > button').click();
-  await page.locator('#host summary').click();
+test('SSH progress and failure stay visible while aliases remain expanded', async ({page,request}) => {
+  let failed=false;
+  const terminal={...(await(await request.post('/api/sessions')).json()),kind:'ssh-connect',name:'SSH · test-cloud',sshTarget:'test-cloud'};
+  await page.route('**/api/ssh/test-cloud/status*',route=>route.fulfill({json:{terminal,phase:failed?'Failed':'Installing backend dependencies',startedAt:Date.now()-3000,...(failed?{error:'Test forwarding failure'}:{})}}));
+  await page.route('**/api/ssh/connect',route=>route.fulfill({json:{terminal,connected:false}}));
+  await page.goto('/');await page.locator('#host > button').click();await page.locator('#host summary').click();
   await page.getByRole('button',{name:'test-cloud',exact:true}).click();
   const progress=page.locator('.connection-progress');
-  await expect(progress).toBeInViewport(); await expect(progress).toContainText('Connecting to test-cloud');
-  await expect(page.locator('#status')).toContainText('Connecting to test-cloud');
-  await expect(progress).toContainText('Installing backend dependencies');
+  await expect(progress).toBeInViewport();await expect(progress).toContainText('Installing backend dependencies');
   await expect(progress).toContainText('s');
-  await expect(page.locator('.connection-body .xterm-screen')).toContainText('$ ssh test-cloud');
-  release!();
-  await expect(progress).toContainText('Test forwarding failure');
-  await expect(page.locator('.connection-body .xterm-screen')).toContainText('Test forwarding failure');
+  await expect(page.locator('#terminal-tabs .tab.active')).toContainText('SSH · test-cloud');
+  await expect(page.locator('.terminal-body:not([hidden]) .xterm')).toBeVisible();
+  failed=true;await expect(progress).toContainText('Test forwarding failure');
   await expect(page.getByRole('button',{name:'test-cloud',exact:true})).toBeEnabled();
 });
 
@@ -288,26 +282,25 @@ test('expansion responds before a slow listing and double-click shares the pendi
 });
 
 
-test('blocked new tab exposes a remote link and retains the current shell', async ({page}) => {
+test('blocked new tab exposes a remote link on the real terminal tab and retains the original shell', async ({page,request}) => {
+  const terminal={...(await(await request.post('/api/sessions')).json()),kind:'ssh-connect',name:'SSH · test-cloud',sshTarget:'test-cloud'};
   await page.addInitScript(()=>{window.open=()=>null;});
-  await page.route('**/api/ssh/test-cloud/status*', route=>route.fulfill({json:{connected:true,phase:'Connected',runId:'success',logs:[{seq:1,text:'$ ssh -N test-cloud\r\n'}]}}));
-  await page.route('**/api/ssh/connect', route=>route.fulfill({json:{connected:true}}));
-  await page.goto('/?w=connection-blocked');
-  await expect(page.locator('.xterm')).toBeVisible();
+  await page.route('**/api/ssh/connect',route=>route.fulfill({json:{connected:true,terminal}}));
+  await page.goto('/?w=connection-blocked');await expect(page.locator('.xterm')).toBeVisible();
   const shell=await page.evaluate(()=>localStorage.getItem('rp2.window.connection-blocked.session'));
   await page.locator('#host > button').click();await page.locator('#host summary').click();
   await page.getByRole('button',{name:'test-cloud',exact:true}).click();
-  const log=page.locator('.connection-body');
-  await expect(log.getByRole('link',{name:'Open remote workspace ↗'})).toHaveAttribute('href', /w=connection-blocked&ssh=test-cloud/);
-  await expect(log.locator('.xterm-screen')).toContainText('$ ssh -N test-cloud');
-  expect(new URL(page.url()).searchParams.has('ssh')).toBe(false);
-  await page.keyboard.press('Escape');
-  await page.getByRole('button',{name:'Close connection log (keep SSH connected)',exact:true}).click();
-  await expect(log).toHaveCount(0);
-  await expect(page.locator('.terminal-body .xterm')).toBeVisible();
+  await expect(page.locator('#terminal-tabs').getByRole('link',{name:'Open remote workspace',exact:true})).toHaveAttribute('href',/w=connection-blocked&ssh=test-cloud/);
+  expect(new URL(page.url()).searchParams.has('ssh')).toBe(false);await page.keyboard.press('Escape');
+  const body=page.locator('.terminal-body:not([hidden])');
+  await body.locator('.xterm-helper-textarea').focus();await page.keyboard.type("printf 'ssh-terminal-%s\\n' works");await page.keyboard.press('Enter');
+  await expect(body.locator('.xterm-screen')).toContainText('ssh-terminal-works');
+  await page.locator('#terminal-tabs .tab.active').getByRole('button',{name:'Close tab and end session',exact:true}).click();
+  await expect(page.locator('#terminal-tabs .tab').filter({hasText:'SSH · test-cloud'})).toHaveCount(0);
+  await expect(page.locator('.terminal-body:not([hidden]) .xterm')).toBeVisible();
+  expect((await(await request.get('/api/sessions')).json()).sessions.some((s:any)=>s.id===terminal.id)).toBe(false);
   expect(await page.evaluate(()=>localStorage.getItem('rp2.window.connection-blocked.session'))).toBe(shell);
 });
-
 
 test('SSH manager saves destinations, restores them and removes only the saved entry',async({page,request})=>{
   const command='ssh -J jump user@saved-cloud';

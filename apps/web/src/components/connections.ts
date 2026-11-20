@@ -1,5 +1,4 @@
-import type { SshProgress } from '@remotepad2/protocol';
-import type { SshConnectionPanel } from './ssh-connection';
+import type { SshProgress, SessionInfo } from '@remotepad2/protocol';
 import { localFetch } from '../base';
 import { profile, sshTarget } from '../connection';
 import { button } from '../api';
@@ -8,7 +7,7 @@ import { popover } from './popover';
 
 type Machine = {id:string;name:string;command:string};
 type Hosts = {local:{hostname:string;user:string;platform:string;arch:string;homedir:string};hosts:string[];connected:string[];saved?:Machine[]};
-export function connectionsButton(host: HTMLElement, status: (message: string) => void, showConnection: (command: string) => SshConnectionPanel) {
+export function connectionsButton(host: HTMLElement, status: (message: string) => void, showConnection: (session: SessionInfo, url?: string) => void) {
   const toggle = popover(host, 'Computers', (current, close) => {
     current.classList.add('ssh-manager');
     let data:Hosts|undefined, busy='', signature='';
@@ -91,45 +90,34 @@ export function connectionsButton(host: HTMLElement, status: (message: string) =
     const connect=async(command:string)=>{
       if(busy)return;busy=command;error.textContent='';render();
       progress.textContent='Connecting to '+command+' · preparing remote backend…';status(progress.textContent);
-      const view = showConnection(command);
-      let finished = false;
-      const readProgress = async (final = false) => {
-        const response = await localFetch('/api/ssh/' + encodeURIComponent(command) + '/status?after=' + view.after);
-        const data = await response.json() as SshProgress; if (response.ok && (!finished || final)) view.update(data); return data;
-      };
-      const started = Date.now();
-      let checking = false;
-      const poll = window.setInterval(() => {
-        if (checking) return; checking = true;
-        void readProgress().then((data) => {
-          if (finished) return;
-          const elapsed = Math.floor((Date.now() - (data.startedAt || started)) / 1000);
-          const message = 'Connecting to ' + command + ' · ' + (data.phase || 'Preparing remote backend') + ' · ' + elapsed + 's';
-          progress.textContent = message; status(message);
-        }).catch(() => {}).finally(() => { checking = false; });
-      }, 750);
-      progress.scrollIntoView({ block: 'nearest' });
+      let terminal:SessionInfo|undefined;
       try {
-        const response = await localFetch('/api/ssh/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ host: command }) });
-        const result = await response.json(); if (!response.ok) throw new Error(result.error);
-        const url = new URL(location.href); url.searchParams.set('ssh', command); if (profile !== 'default') url.searchParams.set('w', profile);
-        finished = true; window.clearInterval(poll);
-        await readProgress(true).catch(() => {});
-        if(data && !data.connected.includes(command))data.connected.push(command);
-        view.finish(url.href);
-        const remote = window.open(url.href, '_blank');
-        if (remote) { remote.opener = null; close(); status('Connected to ' + command + ' · opened in a new tab'); }
-        else {
-          progress.textContent = 'Connected · open remote workspace ↗';
-          const open = document.createElement('a'); open.href = url.href; open.target = '_blank'; open.rel = 'noopener'; open.textContent = 'Open remote workspace'; progress.append(document.createElement('br'), open);
-          status('Connected to ' + command + ' · use Open remote workspace in the connection terminal');
+        const response=await localFetch('/api/ssh/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host:command})});
+        let state=await response.json() as SshProgress;
+        if(!response.ok)throw new Error(state.error || 'SSH connection failed.');
+        terminal=state.terminal;
+        if(terminal?.alive)showConnection(terminal);
+        while(!state.connected){
+          if(state.phase==='Failed' || state.phase==='Disconnected')throw new Error(state.error || 'SSH connection failed. See terminal output.');
+          if(!terminal)throw new Error('Restart this lane backend to enable the SSH terminal.');
+          const elapsed=Math.floor((Date.now()-(state.startedAt||Date.now()))/1000);
+          progress.textContent='Connecting to '+command+' · '+(state.phase || 'Preparing remote backend')+' · '+elapsed+'s';status(progress.textContent);
+          await new Promise(resolve=>window.setTimeout(resolve,750));
+          const response=await localFetch('/api/ssh/'+encodeURIComponent(command)+'/status');
+          state=await response.json();if(!response.ok)throw new Error(state.error || 'Could not read SSH status.');
         }
-      } catch (error) {
-        finished = true; window.clearInterval(poll);
-        await readProgress(true).catch(() => {}); view.finish(undefined, (error as Error).message);
-        progress.textContent = (error as Error).message; status('SSH ' + command + ': ' + progress.textContent);
-
-      } finally { finished = true; window.clearInterval(poll); busy=''; render(); }
+        const url=new URL(location.href);url.searchParams.set('ssh',command);if(profile!=='default')url.searchParams.set('w',profile);
+        if(data && !data.connected.includes(command))data.connected.push(command);
+        if(terminal)showConnection(terminal,url.href);
+        const remote=window.open(url.href,'_blank');
+        if(remote){remote.opener=null;close();status('Connected to '+command+' · opened in a new tab');}
+        else {
+          progress.textContent='Connected · ';
+          const link=document.createElement('a');link.href=url.href;link.target='_blank';link.rel='noopener';link.textContent='Open remote workspace';progress.append(link);
+          status('Connected to '+command+' · use the Open remote workspace link on the terminal tab');
+        }
+      } catch(reason){progress.textContent=(reason as Error).message;status('SSH '+command+': '+progress.textContent);}
+      finally {busy='';render();}
     };
     void reload().catch(reason=>{info.textContent='Machine information unavailable';fail(reason);});
     const poll=()=>{if(!current.isConnected)return;void reload().catch(fail).finally(()=>{if(current.isConnected)window.setTimeout(poll,3000);});};

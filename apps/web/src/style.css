@@ -223,10 +223,6 @@ button.icon-button { display: inline-flex; align-items: center; justify-content:
 .file-actions button[aria-label=Favorites][aria-pressed=true], .tree-pin.pin-favorites.on { color: #e6c07b; }
 .tree-pin.pin-favorites.on svg { fill: #e6c07b22; }
 .file-actions button[aria-label=Repos][aria-pressed=true], .tree-pin.pin-repos.on { color: #9bc2ee; }
-.connection-body { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; }
-.connection-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; font-size: 11px; border-bottom: 1px solid #353c42; color: #8b95a6; }
-.connection-toolbar a, .connection-progress a { color: #a6d3b4; }
-.connection-output { flex: 1; min-height: 0; overflow: hidden; padding: 8px; }
 .header-left { display: flex; align-items: center; gap: 6px; }
 #channel > button { display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 6px; font-size: 11px; }
 #channel > button::after { content: '⌄'; color: #8e999f; }
@@ -252,3 +248,5 @@ button.icon-button { display: inline-flex; align-items: center; justify-content:
 .ssh-manager .ssh-config-row > button, .ssh-manager .ssh-form-actions > button { width: auto; }
 .ssh-form-actions > button { flex: 1; text-align: center; }
 .ssh-config-row .pinned { color: #8ad3b4; }
+
+.tab > a { padding: 7px; color: #8ad3b4; text-decoration: none; }

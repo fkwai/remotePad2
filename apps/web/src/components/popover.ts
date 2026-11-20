@@ -14,7 +14,10 @@ export function popover(host: HTMLElement, label: string, build: (body: HTMLElem
     toggle.setAttribute('aria-expanded', 'true');
     build(body, close);
     document.addEventListener('pointerdown', (event) => { if (!host.contains(event.target as Node)) close(); }, { signal: abort.signal });
-    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); }, { signal: abort.signal });
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault(); event.stopPropagation(); close();
+    }, { capture: true, signal: abort.signal });
   });
   toggle.setAttribute('aria-expanded', 'false');
   host.classList.add('popover-host');

@@ -14,7 +14,7 @@ export class TerminalPanel {
   private observer: ResizeObserver;
   private disposed = false;
   private retry?: number;
-  constructor(id: string, status: (value: string) => void) {
+  constructor(id: string, status: (value: string) => void, local = false) {
     this.element.className = 'terminal-body';
     this.element.setAttribute('aria-label', 'Terminal');
     this.terminal.loadAddon(this.fit);
@@ -29,7 +29,7 @@ export class TerminalPanel {
     this.terminal.onData((data) => this.send({ type: 'input', data }));
     const connect = () => {
       status('Connecting…');
-      const socket = new WebSocket(workspaceSocket('/ws/terminal/' + id));
+      const socket = new WebSocket(workspaceSocket('/ws/terminal/' + id, local));
       this.socket = socket;
       socket.onmessage = ({ data }) => {
         const event = JSON.parse(data) as TerminalEvent;

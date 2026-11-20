@@ -1,4 +1,5 @@
 import os from 'node:os';
+import type {TerminalService} from './terminal.ts';
 import {savedMachines} from './ssh-machines.ts';
 import { previewRequest } from './preview-access.ts';
 import { sshConfigHosts } from './ssh-hosts.ts';
@@ -6,7 +7,7 @@ import { request } from 'node:http';
 import { createConnection } from 'node:net';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import WebSocket, { type RawData } from 'ws';
-import { closeSsh as closeSshConnections, connectedHosts as connectedSshHosts, connectSsh, sshProgress, sshTranscript, sshSocket as socketFor, parseSsh } from './ssh.ts';
+import { closeSsh as closeSshConnections, connectedHosts as connectedSshHosts, connectSsh, sshProgress, sshSocket as socketFor, parseSsh } from './ssh.ts';
 
 const workerPath = /^\/api\/(?:health|files|file|search|preview|sessions|codex|navigation)(?:\/|\?|$)/;
 const workerSocket = /^\/ws\/(?:terminal|codex)\/[^/?]+$/;
@@ -22,7 +23,7 @@ function localBrowser(req: FastifyRequest) {
   return (!origin || sameOrigin) && (!site || site === 'same-origin' || directRead);
 }
 
-export async function registerSshRoutes(app: FastifyInstance, home = os.homedir()) {
+export async function registerSshRoutes(app: FastifyInstance, home = os.homedir(), terminals?:TerminalService) {
   const machines = savedMachines(home);
   await app.register(async (router) => {
     router.addHook('onRequest', async (req, reply) => {
@@ -50,8 +51,8 @@ export async function registerSshRoutes(app: FastifyInstance, home = os.homedir(
       machines.remove(req.params.id);return {ok:true};
     });
 
-    router.get<{ Params: { host: string }; Querystring: { after?: string } }>('/api/ssh/:host/status', async (req) => ({
-      connected: Boolean(socketFor(req.params.host)), ...sshProgress(req.params.host), ...sshTranscript(req.params.host, Math.max(0, Number(req.query.after) || 0)),
+    router.get<{ Params: { host: string } }>('/api/ssh/:host/status', async (req) => ({
+      connected: Boolean(socketFor(req.params.host)), ...sshProgress(req.params.host),
     }));
 
     router.post<{ Body: { host?: string } }>('/api/ssh/connect', async (req, reply) => {
@@ -61,8 +62,8 @@ export async function registerSshRoutes(app: FastifyInstance, home = os.homedir(
       }
       try {
         parseSsh(host);
-        await connectSsh(host);
-        return { connected: true };
+        if(!terminals)throw new Error('SSH terminal service unavailable.');
+        return connectSsh(host,terminals);
       } catch (err) {
         return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
       }
@@ -128,5 +129,5 @@ export async function registerSshRoutes(app: FastifyInstance, home = os.homedir(
       client.on('error', () => upstream.terminate());
     });
   });
-  app.addHook('onClose', async () => closeSshConnections());
+  app.addHook('onClose', async () => {await closeSshConnections();});
 }

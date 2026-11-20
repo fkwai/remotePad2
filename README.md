@@ -50,15 +50,17 @@ hidden-file filter and skips dependency/cache directories. Existing RemotePad
 pins are copied once into ~/.remotepad2/navigation.json and managed separately.
 Each tree directory has ◆ Repo and ★ Favorite toggles, independent of expansion.
 
-Click **RemotePad2** at the top left for installed version/branch/commit,
-local branch versions and **Windows**. **+ New** and window rows open another
+Click **RemotePad2** at the top left for **Sessions**, their count and the
+machine each belongs to. The adjacent **main/dev/nightly** badge opens version
+information and channel switching. **+ New** and window rows open another
 browser window; right-click offers rename or open in this window. × forgets
 its saved layout, including the default window.
 Window profiles persist in ~/.remotepad2/windows.json on the local backend,
 with browser storage as a live cache. Each machine and window remembers panel
 sizes, visibility, directory, Editor/Explorer tabs, split state, hidden-file
 filter and the selected shell. Switching leaves shells running.
-The version view is read-only; it never changes Git branches or restarts a server.
+Switching versions navigates to a separate lane; it never switches the checkout
+or restarts a running server. **Start** can launch a stopped lane.
 
 Sessions Index lists up to 200 unarchived Codex sessions using your custom
 title and project label. For a conversation owned by the running local Codex
@@ -90,16 +92,21 @@ ssh -p 22 -i "/path/to/key" -J jump-host user@machine
 
 Connection progress shows the current phase and elapsed seconds: SSH login,
 checking/installing the backend, opening the tunnel and health validation.
-The Terminal panel opens a read-only SSH log tab with the actual bootstrap and
-tunnel process output. Closing that log leaves the connection running. Once
-connected, a new browser tab opens the remote workspace in the same channel
-and window profile; the original workspace stays open. If the browser blocks
-the new tab, use **Open remote workspace** in the log.
+Connect opens an ordinary **interactive Terminal** and executes the setup
+script there. Shell tracing shows each SSH/bootstrap command as it runs with
+its original stdout/stderr; password/passphrase/host confirmation prompts can
+be answered in that terminal. Ctrl+C cancels the running setup. The shell stays
+open and usable after success or failure. Closing its tab ends that shell;
+closing the browser only detaches. A successful SSH tunnel is an independent
+ControlMaster, so closing the setup terminal does not disconnect the workspace.
+Once connected, a new browser tab opens the remote workspace in the same
+channel and window profile; the original workspace stays open. If the browser
+blocks it, use the ↗ **Open remote workspace** link on the setup terminal tab.
 A matching backend is reused; new backend revisions install once. Jump-host
 handshakes can account for most connection time.
 
-The connection uses your existing OpenSSH keys and known hosts. Authenticate
-and verify a new host in Terminal first if needed. The first connection
+The connection uses your existing OpenSSH keys and known hosts. New-host
+confirmation and authentication are handled by OpenSSH in the setup terminal. The first connection
 uploads the API source and installs locked dependencies under
 ~/.remotepad2/backend/<channel>/<revision> on the remote machine. That machine needs OpenSSH Unix
 socket forwarding, a POSIX shell and Node.js 22+ with npm in its non-interactive PATH.

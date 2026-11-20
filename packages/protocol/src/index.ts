@@ -13,4 +13,4 @@ export interface CodexSession { id: string; title: string; cwd: string; updatedA
 export interface PinnedFolder { path: string; name: string; branch?: string }
 export interface Navigation { favorites: PinnedFolder[]; repos: PinnedFolder[] }
 
-export interface SshProgress { connected?: boolean; phase?: string; startedAt?: number; error?: string; runId?: string; logs?: {seq:number;text:string}[]; nextSeq?: number }
+export interface SshProgress { connected?: boolean; phase?: string; startedAt?: number; error?: string; terminal?: SessionInfo }

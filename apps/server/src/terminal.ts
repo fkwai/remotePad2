@@ -7,11 +7,14 @@ import { appOwner } from './codex-app.ts';
 import { codexSessions } from './codex.ts';
 import type { SessionInfo, TerminalEvent } from '@remotepad2/protocol';
 
-interface Session {
+export interface Session {
   info: SessionInfo;
   process: pty.IPty;
   replay: string;
   clients: Set<WebSocket>;
+}
+export interface TerminalService {
+  create(options?:{cwd?:string;name?:string;codexId?:string;kind?:SessionInfo['kind'];sshTarget?:string}):Session;
 }
 export async function registerTerminal(app: FastifyInstance) {
   const sessions = new Map<string, Session>();
@@ -29,28 +32,18 @@ export async function registerTerminal(app: FastifyInstance) {
     try { return { sessions: codexSessions() }; }
     catch (error) { return reply.code(503).send({ error: (error as Error).message }); }
   });
-  app.post<{ Body: { codexId?: string } }>('/api/sessions', async (req, reply) => {
-    const codexId = req.body?.codexId;
-    const attached = codexId ? [...sessions.values()].find((session) => session.info.codexId === codexId && session.info.alive) : undefined;
-    const existing = codexId ? codexSessions().find((session) => session.id === codexId) : undefined;
-    if (codexId && !existing) return reply.code(404).send({ error: 'Codex session unavailable.' });
-    if (existing) {
-      const owner = await appOwner(existing.id).catch(() => null);
-      if (owner) return { id: 'app:' + existing.id, codexId: existing.id, kind: 'codex-app',
-        name: existing.title, cwd: existing.cwd, alive: true };
-    }
-    if (attached) return attached.info;
-    const cwd = existing?.cwd || os.homedir();
+  const create:TerminalService['create']=(options={})=>{
+    const cwd = options.cwd || os.homedir();
     let process: pty.IPty;
     try {
-      process = pty.spawn(existing ? 'codex' : os.userInfo().shell || '/bin/bash',
-        existing ? ['resume', existing.id, '--no-alt-screen'] : ['-l'], {
+      process = pty.spawn(options.codexId ? 'codex' : os.userInfo().shell || '/bin/bash',
+        options.codexId ? ['resume', options.codexId, '--no-alt-screen'] : ['-l'], {
       name: 'xterm-256color', cols: 80, rows: 24, cwd,
       env: { ...globalThis.process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
     });
-    } catch (error) { return reply.code(400).send({ error: (error as Error).message }); }
+    } catch (error) { throw error; }
     const session: Session = {
-      info: { id: randomUUID(), name: existing ? existing.title : 'Shell', cwd, codexId: existing?.id, alive: true },
+      info: { id: randomUUID(), name: options.name || 'Shell', cwd, codexId: options.codexId, kind:options.kind,sshTarget:options.sshTarget,alive: true },
       process, replay: '', clients: new Set(),
     };
     sessions.set(session.info.id, session);
@@ -63,7 +56,21 @@ export async function registerTerminal(app: FastifyInstance) {
       session.info.exitCode = exitCode;
       for (const client of session.clients) send(client, { type: 'exit', code: exitCode });
     });
-    return session.info;
+    return session;
+  };
+  app.post<{ Body: { codexId?: string } }>('/api/sessions', async (req, reply) => {
+    const codexId = req.body?.codexId;
+    const attached = codexId ? [...sessions.values()].find((session) => session.info.codexId === codexId && session.info.alive) : undefined;
+    const existing = codexId ? codexSessions().find((session) => session.id === codexId) : undefined;
+    if (codexId && !existing) return reply.code(404).send({ error: 'Codex session unavailable.' });
+    if (existing) {
+      const owner = await appOwner(existing.id).catch(() => null);
+      if (owner) return { id: 'app:' + existing.id, codexId: existing.id, kind: 'codex-app',
+        name: existing.title, cwd: existing.cwd, alive: true };
+    }
+    if (attached) return attached.info;
+    try {return create({cwd:existing?.cwd,name:existing?.title,codexId:existing?.id}).info;}
+    catch(error){return reply.code(400).send({error:(error as Error).message});}
   });
   app.delete<{ Params: { id: string } }>('/api/sessions/:id', async (req) => {
     const session = sessions.get(req.params.id);
@@ -95,4 +102,5 @@ export async function registerTerminal(app: FastifyInstance) {
     socket.on('close', () => session.clients.delete(socket));
     socket.on('error', () => socket.close());
   });
+  return {create} satisfies TerminalService;
 }

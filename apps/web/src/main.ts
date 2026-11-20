@@ -1,14 +1,13 @@
-import { channel } from './base';
+import { channel, localFetch } from './base';
 import { initializeWindow, startWindowSave } from './windows';
 import { menu } from './components/menu';
 import { Layout } from './components/layout';
 import { workspaceMenu, versionMenu } from './components/workspaces';
 import type { FileContent, SessionInfo } from '@remotepad2/protocol';
 import { api, button } from './api';
-import { workspaceKey } from './connection';
+import { workspaceKey, sshTarget } from './connection';
 import { connectionsButton } from './components/connections';
 import { CodexPanel } from './components/codex';
-import { SshConnectionPanel } from './components/ssh-connection';
 import { TerminalPanel } from './components/terminal';
 import { FolderPanel } from './components/folder';
 import { isImage } from './components/render';
@@ -27,7 +26,7 @@ document.querySelector('#app')!.innerHTML = `
 <footer id="status" role="status">Ready</footer>`;
 const get = (id: string) => document.getElementById(id)!;
 const status = (message: string) => { get('status').textContent = message; };
-const terminals = new Map<string, { info: SessionInfo; panel: TerminalPanel | CodexPanel | SshConnectionPanel }>();
+const terminals = new Map<string, { info: SessionInfo; panel: TerminalPanel | CodexPanel; remoteUrl?:string }>();
 const editors = new Map<string, EditorPanel | FolderPanel>();
 let activeSession = '';
 let activeFile = '';
@@ -45,20 +44,22 @@ const layout = () => panels.apply();
 panels.menu(get('layout-menu'));
 workspaceMenu(get('version'));
 versionMenu(get('channel'));
-const showMachine = connectionsButton(get('host'), status, (command) => {
-  const id = 'connect:' + crypto.randomUUID();
-  const info: SessionInfo = {id, name:'SSH · ' + command, cwd:'', kind:'ssh-connect', sshTarget:command, alive:true};
-  openSession(info); return terminals.get(id)!.panel as SshConnectionPanel;
+const showMachine = connectionsButton(get('host'), status, (info,url) => {
+  if(url){const terminal=terminals.get(info.id);if(terminal){terminal.remoteUrl=url;renderTerminals();}}
+  else openSession(info);
 });
 function renderTerminals() {
   const tabs = [...terminals].map(([id, { info, panel }]) => {
     panel.element.hidden = id !== activeSession;
     const tab = document.createElement('div');
     tab.className = 'tab' + (id === activeSession ? ' active' : '');
-    const closeLabel = info.kind === 'ssh-connect' ? 'Close connection log (keep SSH connected)' : 'Close tab and end session';
+    const closeLabel = 'Close tab and end session';
     const close = button('×', () => void closeSession(id), closeLabel);
     close.setAttribute('aria-label', closeLabel);
-    tab.append(button(info.name + (info.kind === 'ssh-connect' ? '' : ' ' + id.slice(0, 6)), () => openSession(info)), close);
+    tab.append(button(info.name + (info.kind === 'ssh-connect' ? '' : ' ' + id.slice(0, 6)), () => openSession(info)));
+    const remoteUrl=terminals.get(id)?.remoteUrl;
+    if(remoteUrl){const link=document.createElement('a');link.href=remoteUrl;link.target='_blank';link.rel='noopener';link.textContent='↗';link.title='Open remote workspace';link.setAttribute('aria-label','Open remote workspace');tab.append(link);}
+    tab.append(close);
     return tab;
   });
   get('terminal-tabs').replaceChildren(...tabs, button('+', () => void createSession(), 'New shell'));
@@ -68,18 +69,20 @@ function openSession(info: SessionInfo) {
   activeSession = info.id;
   if (!terminals.has(info.id)) {
     const report = (message: string) => { if (activeSession === info.id) status(message); };
-    const panel = info.kind === 'ssh-connect' ? new SshConnectionPanel(info.sshTarget!) : info.kind === 'codex-app' ? new CodexPanel(info.codexId!, report) : new TerminalPanel(info.id, report);
+    const panel = info.kind === 'codex-app' ? new CodexPanel(info.codexId!, report) : new TerminalPanel(info.id, report, info.kind==='ssh-connect');
     terminals.set(info.id, { info, panel });
     get('terminal-content').append(panel.element);
   }
   visibility.terminal = true;
-  if (info.kind !== 'ssh-connect') localStorage.setItem(workspaceKey(channel ? 'session.' + channel : 'session'), info.id);
+  if (info.kind !== 'ssh-connect' || !sshTarget) localStorage.setItem(workspaceKey(channel ? 'session.' + channel : 'session'), info.id);
   renderTerminals();
   layout();
 }
 async function closeSession(id: string) {
   try {
-    if (!['codex-app','ssh-connect'].includes(terminals.get(id)?.info.kind || '')) await api('/api/sessions/' + id, { method: 'DELETE' });
+    const kind=terminals.get(id)?.info.kind;
+    if(kind==='ssh-connect')await localFetch('/api/sessions/'+id,{method:'DELETE'});
+    else if(kind!=='codex-app')await api('/api/sessions/'+id,{method:'DELETE'});
     const terminal = terminals.get(id);
     terminal?.panel.dispose();
     terminal?.panel.element.remove();
@@ -87,7 +90,7 @@ async function closeSession(id: string) {
     sessionList = sessionList.filter((s) => s.id !== id);
     if (id === activeSession) activeSession = [...terminals.keys()].at(-1) || '';
     const selected = terminals.get(activeSession)?.info;
-    if (selected?.kind !== 'ssh-connect') localStorage.setItem(workspaceKey(channel ? 'session.' + channel : 'session'), activeSession);
+    if (selected?.kind !== 'ssh-connect' || !sshTarget) localStorage.setItem(workspaceKey(channel ? 'session.' + channel : 'session'), activeSession);
     renderTerminals();
   } catch (error) { status((error as Error).message); }
 }
@@ -204,7 +207,7 @@ async function refresh() {
   const result = await api<{ sessions: SessionInfo[] }>('/api/sessions');
   sessionList = result.sessions;
   for (const [id, terminal] of terminals) {
-    if (terminal.info.kind === 'codex-app' || terminal.info.kind === 'ssh-connect') continue;
+    if (terminal.info.kind === 'codex-app' || (terminal.info.kind === 'ssh-connect' && sshTarget)) continue;
     const info = sessionList.find((s) => s.id === id);
     if (info) terminal.info = info;
     else {

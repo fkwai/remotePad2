@@ -1,24 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {ConnectionLog, displayCommand} from '../apps/server/src/ssh-log.ts';
+import {displayCommand} from '../apps/server/src/ssh-command.ts';
 import {remoteRuntime} from '../apps/server/src/ssh-runtime.ts';
-
-test('connection transcript is incremental, bounded in bytes and redacts credentials', () => {
-  const log = new ConnectionLog(100);
-  log.write('starting\r\n');
-  const first = log.read();
-  log.write('ssh ready\r\n');
-  assert.deepEqual(log.read(first.nextSeq).logs.map(x=>x.text), ['ssh ready\r\n']);
-  log.write('汉'.repeat(100));
-  const remaining = log.read().logs.map(x=>x.text).join('');
-  assert.ok(Buffer.byteLength(remaining)<=100);
-  assert.ok(!remaining.includes('\ufffd'));
-  const secrets = new ConnectionLog();
-  secrets.write('Authorization: Bearer private-secret\npassword=pwd token=abc https://user:pass@registry.example/fail');
-  assert.doesNotMatch(secrets.read().logs[0].text, /private-secret|pwd|abc|user:pass/);
-  assert.notEqual(log.runId, secrets.runId);
-  assert.equal(log.read(999).logs.length,0);
-});
 
 test('remote lanes cannot share workers even at the same revision', () => {
   const revision='abcdef0123456789abcd';
