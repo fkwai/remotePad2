@@ -88,7 +88,8 @@ Terminal-first web workbench, developed in this repository on dev.
   Machine controls mount before workspace health checks so reconnect stays
   available if a remote backend is unavailable. Tooltip includes remote hostname.
   Its Computers menu is the SSH manager: local user/platform/home, saved machines
-  with Connected / Not connected / Connecting state and Open / Connect actions.
+  with Connected / Not connected / Connecting / Disconnecting state. Open, Connect,
+  Disconnect, Save and Remove use icon buttons with labels/tooltips.
   Refresh and a 3-second poll update states while open. Add SSH connection is
   collapsed until clicked and reveals config aliases (including Includes),
   command and optional name. Save machine adds without connecting; star pins a
@@ -97,6 +98,11 @@ Terminal-first web workbench, developed in this repository on dev.
   in ~/.remotepad2/ssh-machines.json, shared across lanes. GET /api/ssh/hosts
   includes saved rows; POST /api/ssh/machines and DELETE /api/ssh/machines/:id
   are local-only, validated with the same argument parser as Connect.
+  Disconnect (POST /api/ssh/disconnect) stops only this lane’s private master
+  for that destination, preserving saved entries, setup shell and remote PTYs.
+  Disconnected remote windows stay on their target so users can reconnect.
+  Config rows reserve a fixed 28px pin button; long aliases ellipsize and both
+  SSH lists reserve scrollbar gutter plus right padding, including overlay bars.
 - Connect creates an ordinary local PTY session (kind ssh-connect), opens it
   in Terminal and runs /bin/bash -x <private-script> for packaging and setup. Both local SSH
   invocations and remote bootstrap commands are traced where they execute;

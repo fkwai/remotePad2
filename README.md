@@ -78,9 +78,12 @@ it. Closing an App-linked view detaches that view and leaves the App running.
 The top-right label shows the current SSH target when remote (hover for its
 actual hostname) and the local hostname otherwise. Click it for its details and connected
 remote machines. Saved machines show their connection state with **Connect**
-or **Open**; the list refreshes while the menu is open. **Save machine** stores
+or **Open**; actions use icons with hover labels. **Disconnect** stops this
+channel’s SSH forwarding while keeping remote workers/shells and saved
+machines available for reconnection. The list refreshes while the menu is open. **Save machine** stores
 a destination and optional display name without connecting. Star an SSH config
-alias or an existing connection to save it. The trash button removes that saved
+alias or an existing connection to save it. Long aliases shorten visually, with
+full names in tooltips; pin buttons stay clear of the scrollbar. The trash button removes that saved
 entry without disconnecting or editing SSH config. This list is stored locally
 in `~/.remotepad2/ssh-machines.json` and shared across channels.
 Expand **Add SSH connection** to choose an alias from

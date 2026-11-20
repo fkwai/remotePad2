@@ -7,7 +7,7 @@ import { request } from 'node:http';
 import { createConnection } from 'node:net';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import WebSocket, { type RawData } from 'ws';
-import { closeSsh as closeSshConnections, connectedHosts as connectedSshHosts, connectSsh, sshProgress, sshSocket as socketFor, parseSsh } from './ssh.ts';
+import { closeSsh as closeSshConnections, connectedHosts as connectedSshHosts, connectSsh, disconnectSsh, sshProgress, sshSocket as socketFor, parseSsh } from './ssh.ts';
 
 const workerPath = /^\/api\/(?:health|files|file|search|preview|sessions|codex|navigation)(?:\/|\?|$)/;
 const workerSocket = /^\/ws\/(?:terminal|codex)\/[^/?]+$/;
@@ -67,6 +67,13 @@ export async function registerSshRoutes(app: FastifyInstance, home = os.homedir(
       } catch (err) {
         return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
       }
+    });
+
+    router.post<{Body:{host?:string}}>('/api/ssh/disconnect',async(req,reply)=>{
+      const host=req.body?.host;
+      try {parseSsh(host as string);}catch(error){return reply.code(400).send({error:(error as Error).message});}
+      try {await disconnectSsh(host!);return {connected:false};}
+      catch(error){return reply.code(502).send({error:(error as Error).message});}
     });
 
     router.all<{ Params: { host: string } }>('/api/ssh/:host/proxy/*', async (req, reply) => {

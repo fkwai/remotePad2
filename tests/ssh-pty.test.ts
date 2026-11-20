@@ -6,7 +6,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import Fastify from '../apps/server/node_modules/fastify/fastify.js';
 import websocket from '../apps/server/node_modules/@fastify/websocket/index.js';
 import {registerTerminal,type Session,type TerminalService} from '../apps/server/src/terminal.ts';
-import {connectSsh,sshProgress,closeSsh} from '../apps/server/src/ssh.ts';
+import {connectSsh,disconnectSsh,sshProgress,closeSsh} from '../apps/server/src/ssh.ts';
 import {displayCommand} from '../apps/server/src/ssh-command.ts';
 import {tempRoot} from './temp.ts';
 
@@ -51,6 +51,12 @@ exit 42
     current!.process.write('\x03');
     await until(()=>sshProgress('pty-cancel-host').phase==='Failed');
     assert.equal(current!.info.alive,true);
+    connectSsh('pty-disconnect-host',service);
+    await until(()=>current.replay.includes('Test SSH authentication: '));
+    await disconnectSsh('pty-disconnect-host');
+    assert.equal(sshProgress('pty-disconnect-host').phase,'Disconnected');
+    assert.equal(current!.info.alive,true);
+    assert.equal(sshProgress('pty-test-host').phase,'Failed');
   } finally {
     await closeSsh();await app.close();
     if(before===undefined)delete process.env.HOME;else process.env.HOME=before;

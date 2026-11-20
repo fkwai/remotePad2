@@ -250,3 +250,9 @@ button.icon-button { display: inline-flex; align-items: center; justify-content:
 .ssh-config-row .pinned { color: #8ad3b4; }
 
 .tab > a { padding: 7px; color: #8ad3b4; text-decoration: none; }
+
+/* Keep action hit targets inside the scrollport, including overlay scrollbars. */
+.ssh-aliases, .ssh-machines { scrollbar-gutter: stable; overflow-x: hidden; padding-right: 12px; }
+.ssh-config-row > button:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.ssh-manager .ssh-config-row > button.icon-button { width: 28px; flex: 0 0 28px; }
+.ssh-manager .ssh-form-actions > button.icon-button { width: 28px; flex: 0 0 28px; }

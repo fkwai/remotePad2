@@ -16,6 +16,7 @@ interface Transport {socket:string;control:string;input:string;dir:string;monito
 const connections=new Map<string,Transport>();
 const jobs=new Map<string,{session:Session;dir?:string;cancelled:boolean}>();
 const pending=new Map<string,Promise<void>>();
+const disconnects=new Map<string,Promise<void>>();
 const progress=new Map<string,{phase:string;startedAt:number;error?:string}>();
 function phase(input:string,value:string,error?:string){progress.set(input,{phase:value,startedAt:progress.get(input)?.startedAt||Date.now(),...(error?{error}:{})});}
 export const sshProgress=(input:string)=>({...progress.get(input),terminal:jobs.get(input)?.session.info});
@@ -43,10 +44,11 @@ export async function healthy(socketPath: string) {
     req.on('timeout', () => req.destroy()); req.on('error', () => resolve(false)); req.end();
   });
 }
-async function stopTransport(transport:Transport){
-  clearInterval(transport.monitor);
+async function stopTransport(transport:Transport,strict=false){
   const {options,host}=parseSsh(transport.input);
-  await run('ssh',[...options,'-S',transport.control,'-O','exit','--',host],{timeout:3000}).catch(()=>{});
+  try {await run('ssh',[...options,'-S',transport.control,'-O','exit','--',host],{timeout:3000});}
+  catch(error){if(strict && await healthy(transport.socket))throw new Error('Could not stop SSH tunnel. Retry Disconnect.');}
+  clearInterval(transport.monitor);
   await rm(transport.dir,{recursive:true,force:true});
 }
 async function waitCommand(result:string,job:{session:Session;cancelled:boolean}){
@@ -174,6 +176,7 @@ ${master} "${transport.socket}:${runtime.socketDirectory.replace('$(id -u)','$ui
 }
 export function connectSsh(input:string,terminals:TerminalService){
   parseSsh(input);
+  if(disconnects.has(input))throw new Error('SSH is disconnecting. Retry when finished.');
   if(connections.has(input))return {connected:true,terminal:jobs.get(input)?.session.info};
   if(pending.has(input))return {connected:false,terminal:jobs.get(input)!.session.info};
   const session=terminals.create({name:'SSH · '+input,kind:'ssh-connect',sshTarget:input});
@@ -184,9 +187,25 @@ export function connectSsh(input:string,terminals:TerminalService){
   pending.set(input,task);
   return {connected:false,terminal:session.info};
 }
+export function disconnectSsh(input:string){
+  parseSsh(input);
+  if(disconnects.has(input))return disconnects.get(input)!;
+  const task=(async()=>{
+    phase(input,'Disconnecting');
+    const job=jobs.get(input),preparing=pending.get(input);
+    if(preparing && job){job.cancelled=true;if(job.session.info.alive)job.session.process.write('\x03');await preparing;}
+    const transport=connections.get(input);
+    try {
+      if(transport){await stopTransport(transport,true);if(connections.get(input)===transport)connections.delete(input);}
+      phase(input,'Disconnected');
+    } catch(error){phase(input,'Connected',(error as Error).message);throw error;}
+  })().finally(()=>disconnects.delete(input));
+  disconnects.set(input,task);return task;
+}
 export async function closeSsh(){
   for(const [input,job] of jobs){job.cancelled=true;if(pending.has(input)&&job.session.info.alive)job.session.process.write('\x03');}
   await Promise.all([...pending.values()]);
+  await Promise.allSettled([...disconnects.values()]);
   const transports=[...connections.values()];connections.clear();
-  await Promise.all(transports.map(stopTransport));
+  await Promise.all(transports.map(transport=>stopTransport(transport)));
 }

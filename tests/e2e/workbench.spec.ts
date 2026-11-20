@@ -348,6 +348,21 @@ test('SSH manager refreshes connection state and opens an already connected mach
   const remote=await next;await expect(remote).toHaveURL(/w=connected-menu&ssh=user%40connected-cloud/);await remote.close();
   expect(connectCalls).toBe(0);
   await page.locator('#host > button').click();
+  let release!:()=>void;const pending=new Promise<void>(resolve=>release=resolve);
+  await page.route('**/api/ssh/disconnect',async route=>{
+    expect(route.request().postDataJSON()).toEqual({host:command});await pending;connected=false;await route.fulfill({json:{connected:false}});
+  });
+  const disconnect=row.getByRole('button',{name:'Disconnect',exact:true});
+  await expect(disconnect).toHaveText('');await expect(disconnect.locator('svg')).toBeVisible();
+  await disconnect.click();await expect(row).toContainText('Disconnecting…');release();
+  await expect(row).toContainText('Not connected');await expect(row.getByRole('button',{name:'Connect',exact:true})).toHaveText('');
+  expect((await(await request.get('/api/ssh/hosts')).json()).saved.some((machine:any)=>machine.id===saved.id)).toBe(true);
+  connected=true;await page.getByRole('button',{name:'Refresh SSH connections',exact:true}).click();
+  await expect(row.getByRole('button',{name:'Disconnect',exact:true})).toBeVisible();
+  await page.route('**/api/ssh/disconnect',route=>route.fulfill({status:502,json:{error:'Test disconnect failed'}}));
+  await row.getByRole('button',{name:'Disconnect',exact:true}).click();
+  await expect(page.getByRole('alert')).toContainText('Test disconnect failed');
+  await expect(row.getByRole('button',{name:'Disconnect',exact:true})).toBeEnabled();
   await row.getByRole('button',{name:'Remove saved machine Connected cloud',exact:true}).click();
   await expect(page.getByRole('button',{name:'Remove saved machine Connected cloud',exact:true})).toHaveCount(0);
   await expect(page.locator('.ssh-machine').filter({hasText:command}).getByRole('button',{name:'Open',exact:true})).toBeVisible();
@@ -367,4 +382,21 @@ test('SSH config aliases can be saved and removed without changing config',async
   await expect(row).toHaveCount(0);
   await expect(page.getByRole('button',{name:'test-cloud',exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Save test-cloud',exact:true})).toBeEnabled();
+});
+
+
+test('SSH favorite icons stay clickable beside scrollbars and long aliases',async({page})=>{
+  const aliases=Array.from({length:35},(_,i)=>'cloud-'+i+'-'+('long-host-name-'.repeat(12)));
+  await page.route('**/api/ssh/hosts',route=>route.fulfill({json:{local:{hostname:'test-local',user:'test',platform:'test',arch:'test',homedir:fixtures},connected:[],saved:[],hosts:aliases}}));
+  await page.goto('/');await page.locator('#host > button').click();await page.locator('#host summary').click();
+  const list=page.locator('.ssh-aliases');
+  expect(await list.evaluate(el=>el.scrollHeight>el.clientHeight)).toBe(true);
+  for(const alias of [aliases[0],aliases[17],aliases[34]]){
+    const pin=page.getByRole('button',{name:'Save '+alias,exact:true});await pin.scrollIntoViewIfNeeded();
+    const bounds=(await pin.boundingBox())!,scroll=(await list.boundingBox())!;
+    expect(bounds.width).toBeGreaterThanOrEqual(27);expect(scroll.x+scroll.width-bounds.x-bounds.width).toBeGreaterThanOrEqual(10);
+    expect(await pin.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})).toBe(true);
+    await pin.click({trial:true});
+  }
+  await page.screenshot({path:path.join(root,'ssh-icons-scrollbar.png')});
 });

@@ -28,6 +28,11 @@ test('SSH destinations persist separately from config; invalid commands and cros
     for(const command of ['host;rm -rf /','ssh host command','ssh -o ProxyCommand=evil host',''])assert.equal((await call('POST','/api/ssh/machines',{command})).statusCode,400);
     const forbidden=await app.inject({method:'POST',url:'/api/ssh/machines',remoteAddress:'127.0.0.1',headers:{...headers,origin:'https://untrusted.example'},payload:{command:'my-cloud'}});
     assert.equal(forbidden.statusCode,403);
+    assert.equal((await call('POST','/api/ssh/disconnect',{host:'host;rm -rf /'})).statusCode,400);
+    const blocked=await app.inject({method:'POST',url:'/api/ssh/disconnect',remoteAddress:'127.0.0.1',headers:{...headers,origin:'https://untrusted.example'},payload:{host:'my-cloud'}});
+    assert.equal(blocked.statusCode,403);
+    assert.equal((await call('POST','/api/ssh/disconnect',{host:'my-cloud'})).json().connected,false);
+    assert.equal(savedMachines(home).read().length,1);
     await call('DELETE','/api/ssh/machines/'+machine.id);
     assert.deepEqual(savedMachines(home).read(),[]);
     assert.equal(await readFile(path.join(home,'.ssh/config'),'utf8'),config);

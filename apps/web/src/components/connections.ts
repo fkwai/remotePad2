@@ -10,7 +10,7 @@ type Hosts = {local:{hostname:string;user:string;platform:string;arch:string;hom
 export function connectionsButton(host: HTMLElement, status: (message: string) => void, showConnection: (session: SessionInfo, url?: string) => void) {
   const toggle = popover(host, 'Computers', (current, close) => {
     current.classList.add('ssh-manager');
-    let data:Hosts|undefined, busy='', signature='';
+    let data:Hosts|undefined, busy='', disconnecting=false, signature='';
     const info=document.createElement('div');info.className='ssh-local';info.textContent='Loading local machine…';
     const head=document.createElement('div');head.className='ssh-heading';
     head.append('SSH connections',iconControl(button('',()=>void reload()),'Refresh SSH connections','refresh'));
@@ -25,8 +25,8 @@ export function connectionsButton(host: HTMLElement, status: (message: string) =
     const input=document.createElement('input');input.setAttribute('aria-label','SSH command');input.placeholder='Alias, user@host, or ssh -J jump user@host';
     const name=document.createElement('input');name.setAttribute('aria-label','Machine name');name.placeholder='Display name (optional)';name.maxLength=100;
     const actions=document.createElement('div');actions.className='ssh-form-actions';
-    const saveButton=button('Save machine',()=>{});saveButton.type='submit';
-    const connectButton=button('Connect',()=>{if(input.value.trim())void connect(input.value.trim());});connectButton.type='button';connectButton.dataset.connect='';
+    const saveButton=iconControl(button('',()=>{}),'Save machine','favorite');saveButton.type='submit';
+    const connectButton=iconControl(button('',()=>{if(input.value.trim())void connect(input.value.trim());}),'Connect','connect');connectButton.type='button';connectButton.dataset.connect='';
     actions.append(saveButton,connectButton);form.append(input,name,actions);add.append(form);
     current.append(info,head,active,progress,error,add);
     const fail=(reason:unknown)=>{error.textContent=(reason as Error).message;};
@@ -48,10 +48,12 @@ export function connectionsButton(host: HTMLElement, status: (message: string) =
       const details=document.createElement('div');details.className='ssh-machine-info';
       const title=document.createElement('strong');title.textContent=label;
       const destination=document.createElement('small');destination.textContent=command;destination.hidden=label===command;
-      const state=document.createElement('span');state.className='ssh-state'+(connecting?' pending':connected?' connected':'');state.textContent=connecting?'Connecting…':connected?'Connected':'Not connected';
+      const state=document.createElement('span');state.className='ssh-state'+(connecting?' pending':connected?' connected':'');state.textContent=connecting?(disconnecting?'Disconnecting…':'Connecting…'):connected?'Connected':'Not connected';
       details.append(title,destination,state);
-      const action=button(connected?'Open':'Connect',()=>connected?open(command):void connect(command));action.dataset.connect='';action.disabled=Boolean(busy);
+      const action=iconControl(button('',()=>connected?open(command):void connect(command)),connected?'Open':'Connect',connected?'open':'connect');action.title=(connected?'Open ':'Connect to ')+label;action.dataset.connect='';action.disabled=Boolean(busy);
       line.append(details,action);
+      if(connected){const disconnect=iconControl(button('',()=>void disconnectMachine(command)),'Disconnect','disconnect');disconnect.title='Disconnect '+label+' (keep remote shells)';disconnect.disabled=Boolean(busy);line.append(disconnect);}
+
       if(id){const remove=iconControl(button('',()=>{
         error.textContent='';void localFetch('/api/ssh/machines/'+encodeURIComponent(id),{method:'DELETE'}).then(async response=>{if(!response.ok)throw new Error('Could not remove machine.');await reload();}).catch(fail);
       }),'Remove saved machine '+label,'trash');remove.title='Remove from saved machines (keep connection)';line.append(remove);}
@@ -60,7 +62,7 @@ export function connectionsButton(host: HTMLElement, status: (message: string) =
     };
     const render=()=>{
       if(!data)return;
-      const next=JSON.stringify([data.saved,data.connected,data.hosts,busy]);if(next===signature)return;signature=next;
+      const next=JSON.stringify([data.saved,data.connected,data.hosts,busy,disconnecting]);if(next===signature)return;signature=next;
       active.replaceChildren();
       const saved=data.saved||[];
       if(!saved.length){const empty=document.createElement('p');empty.className='ssh-empty';empty.textContent='No saved machines. Add one below.';active.append(empty);}
@@ -70,7 +72,7 @@ export function connectionsButton(host: HTMLElement, status: (message: string) =
       aliases.replaceChildren();
       for(const command of data.hosts){
         const line=document.createElement('div');line.className='ssh-config-row';
-        const choose=button(command,()=>void connect(command));choose.dataset.connect='';choose.disabled=Boolean(busy);
+        const choose=button(command,()=>void connect(command));choose.title=command;choose.dataset.connect='';choose.disabled=Boolean(busy);
         const savedAlready=saved.some(machine=>machine.command===command);
         const pin=iconControl(button('',()=>{error.textContent='';void save(command).catch(fail);}),savedAlready?'Saved '+command:'Save '+command,'favorite');pin.disabled=savedAlready;pin.classList.toggle('pinned',savedAlready);
         line.append(choose,pin);aliases.append(line);
@@ -87,6 +89,17 @@ export function connectionsButton(host: HTMLElement, status: (message: string) =
       const local=button(sshTarget?'Switch to local':'● Local machine',()=>{const url=new URL(location.href);url.searchParams.delete('ssh');location.assign(url.href);});
       info.replaceChildren(heading,description,home,local);render();
     }
+    const disconnectMachine=async(command:string)=>{
+      if(busy)return;busy=command;disconnecting=true;error.textContent='';render();
+      try {
+        const response=await localFetch('/api/ssh/disconnect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host:command})});
+        const result=await response.json();if(!response.ok)throw new Error(result.error || 'Could not disconnect.');
+        if(data)data.connected=data.connected.filter(host=>host!==command);
+        progress.textContent='Disconnected from '+command+' · remote shells kept running';status(progress.textContent);
+        await reload();
+      }catch(reason){fail(reason);}
+      finally{busy='';disconnecting=false;render();}
+    };
     const connect=async(command:string)=>{
       if(busy)return;busy=command;error.textContent='';render();
       progress.textContent='Connecting to '+command+' · preparing remote backend…';status(progress.textContent);
