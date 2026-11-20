@@ -35,7 +35,17 @@ test('version Switch preserves window and shell processes across branch instance
  const devPid=(await(await request.get('/dev/api/health')).json()).pid;
  const mainPid=(await(await request.get('/main/api/health')).json()).pid;
  expect(devPid).not.toBe(mainPid);
+ await request.put('/dev/api/windows/remote-session',{data:{ssh:'cloudKuai',name:'Cloud work',state:{}}});
  await page.getByRole('button',{name:'RemotePad2',exact:true}).click();
+ await expect(page.locator('#version .workspace-row').filter({hasText:'Cloud work'})).toContainText('cloudKuai');
+ await expect(page.locator('#version .version-branch-row')).toHaveCount(0);
+ await expect(page.locator('#version .version-info')).toHaveCount(0);
+ await expect(page.locator('#version .popover')).toContainText('Sessions');
+ await page.keyboard.press('Escape');
+ await page.getByRole('button',{name:'Switch version',exact:true}).click();
+ await expect(page.locator('#channel > button')).toHaveText('dev');
+ await expect(page.locator('#channel .version-branch-row')).toHaveCount(3);
+ await page.screenshot({path:path.join(root,'version-menu.png')});
  const row=page.locator('.version-branch-row').filter({has:page.locator('span',{hasText:/^main$/})});
  await row.getByRole('button',{name:'Switch',exact:true}).click();
  await expect(page).toHaveURL(/\/main\/\?w=lane-switch/);

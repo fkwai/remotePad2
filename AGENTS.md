@@ -71,8 +71,10 @@ Terminal-first web workbench, developed in this repository on dev.
   start-turn v2). It is version-dependent and must fail visibly on incompatibility.
 - Unowned Codex histories use the installed CLI via codex resume. RemotePad2
   does not edit the Codex database. The owning App or CLI writes its history.
-- Left RemotePad2 wordmark matches the original mark/type/version/branch badge.
-  The version popover shows installed version, local branch heads and Windows.
+- Left RemotePad2 wordmark opens only the workbench Sessions list: count,
+  names and machine hostname/SSH destination. The adjacent, separately clickable
+  main/dev/nightly badge opens Versions with installed version and lane switching.
+  Version information never belongs in the wordmark Sessions menu.
   + New and window rows open another browser window; right-click offers same-
   window open and rename. × forgets the saved layout (including default).
 - Local /api/windows stores window snapshots in ~/.remotepad2/windows.json,
@@ -85,9 +87,16 @@ Terminal-first web workbench, developed in this repository on dev.
   while local. Async local-host discovery must never overwrite the SSH label.
   Machine controls mount before workspace health checks so reconnect stays
   available if a remote backend is unavailable. Tooltip includes remote hostname.
-  Its Computers menu starts with
-  user/platform/home and connected remotes; Add SSH connection is collapsed
-  until clicked, then reveals config aliases (including Includes) and command input.
+  Its Computers menu is the SSH manager: local user/platform/home, saved machines
+  with Connected / Not connected / Connecting state and Open / Connect actions.
+  Refresh and a 3-second poll update states while open. Add SSH connection is
+  collapsed until clicked and reveals config aliases (including Includes),
+  command and optional name. Save machine adds without connecting; star pins a
+  config alias or existing connection. Trash removes only the saved entry, never
+  edits SSH config or disconnects a live transport. Destinations persist locally
+  in ~/.remotepad2/ssh-machines.json, shared across lanes. GET /api/ssh/hosts
+  includes saved rows; POST /api/ssh/machines and DELETE /api/ssh/machines/:id
+  are local-only, validated with the same argument parser as Connect.
 - Connecting opens a read-only SSH process log in a Terminal tab; bootstrap
   stderr and the tunnel command are streamed through cursor-based status polling.
   Closing the log only disposes the view; it never cancels SSH or ends a shell.

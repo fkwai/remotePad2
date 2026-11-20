@@ -1,4 +1,5 @@
 import os from 'node:os';
+import {savedMachines} from './ssh-machines.ts';
 import { previewRequest } from './preview-access.ts';
 import { sshConfigHosts } from './ssh-hosts.ts';
 import { request } from 'node:http';
@@ -21,7 +22,8 @@ function localBrowser(req: FastifyRequest) {
   return (!origin || sameOrigin) && (!site || site === 'same-origin' || directRead);
 }
 
-export async function registerSshRoutes(app: FastifyInstance) {
+export async function registerSshRoutes(app: FastifyInstance, home = os.homedir()) {
+  const machines = savedMachines(home);
   await app.register(async (router) => {
     router.addHook('onRequest', async (req, reply) => {
       if (!localBrowser(req) && !previewRequest(req)) return reply.code(403).send({ error: 'SSH connections are available from the local RemotePad browser.' });
@@ -35,9 +37,18 @@ export async function registerSshRoutes(app: FastifyInstance) {
         arch: os.arch(),
         homedir: os.homedir(),
       },
-      hosts: await sshConfigHosts(),
+      hosts: await sshConfigHosts(home),
+      saved: machines.read(),
       connected: connectedSshHosts(),
     }));
+
+    router.post<{Body:{command?:unknown;name?:unknown}}>('/api/ssh/machines', async (req,reply)=>{
+      try {return machines.save(req.body?.command,req.body?.name);}
+      catch(error){return reply.code(400).send({error:(error as Error).message});}
+    });
+    router.delete<{Params:{id:string}}>('/api/ssh/machines/:id', async req=>{
+      machines.remove(req.params.id);return {ok:true};
+    });
 
     router.get<{ Params: { host: string }; Querystring: { after?: string } }>('/api/ssh/:host/status', async (req) => ({
       connected: Boolean(socketFor(req.params.host)), ...sshProgress(req.params.host), ...sshTranscript(req.params.host, Math.max(0, Number(req.query.after) || 0)),

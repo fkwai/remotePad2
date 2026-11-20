@@ -227,3 +227,28 @@ button.icon-button { display: inline-flex; align-items: center; justify-content:
 .connection-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; font-size: 11px; border-bottom: 1px solid #353c42; color: #8b95a6; }
 .connection-toolbar a, .connection-progress a { color: #a6d3b4; }
 .connection-output { flex: 1; min-height: 0; overflow: hidden; padding: 8px; }
+.header-left { display: flex; align-items: center; gap: 6px; }
+#channel > button { display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 6px; font-size: 11px; }
+#channel > button::after { content: '⌄'; color: #8e999f; }
+#channel .popover { left: -100px; width: 320px; }
+.ssh-manager { width: min(410px, calc(100vw - 32px)); }
+.ssh-heading > button.icon-button { width: 28px; }
+.ssh-heading { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 4px; font-size: 12px; font-weight: 600; }
+.ssh-local { border-bottom: 1px solid #353c42; padding-bottom: 10px; }
+.ssh-local h3 { color: #dee3e7; }
+.ssh-machines { max-height: 340px; overflow: auto; }
+.ssh-machine { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid #2c3034; }
+.ssh-machine-info { flex: 1; min-width: 0; }
+.ssh-machine-info strong { display: block; overflow-wrap: anywhere; font-size: 12px; }
+.ssh-machine-info small { margin: 3px 0; font-size: 10px; }
+.ssh-state { display: block; margin-top: 4px; font-size: 10px; color: #8e999f; }
+.ssh-state::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin-right: 5px; }
+.ssh-state.connected { color: #8ad3b4; }
+.ssh-state.pending { color: #e3c57a; }
+.ssh-machine > button { flex-shrink: 0; }
+.ssh-empty { padding: 10px 0; color: #8e999f; font-size: 11px; }
+.ssh-config-row, .ssh-form-actions { display: flex; align-items: center; gap: 6px; }
+.ssh-config-row > button:first-child { flex: 1; }
+.ssh-manager .ssh-config-row > button, .ssh-manager .ssh-form-actions > button { width: auto; }
+.ssh-form-actions > button { flex: 1; text-align: center; }
+.ssh-config-row .pinned { color: #8ad3b4; }

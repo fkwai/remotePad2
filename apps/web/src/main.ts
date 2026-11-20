@@ -2,7 +2,7 @@ import { channel } from './base';
 import { initializeWindow, startWindowSave } from './windows';
 import { menu } from './components/menu';
 import { Layout } from './components/layout';
-import { workspaceMenu } from './components/workspaces';
+import { workspaceMenu, versionMenu } from './components/workspaces';
 import type { FileContent, SessionInfo } from '@remotepad2/protocol';
 import { api, button } from './api';
 import { workspaceKey } from './connection';
@@ -20,7 +20,7 @@ import './style.css';
 
 await initializeWindow();
 document.querySelector('#app')!.innerHTML = `
-<header><div id="version"></div><nav id="controls"></nav><div class="header-right"><div id="layout-menu"></div><div id="host"></div></div></header>
+<header><div class="header-left"><div id="version"></div><div id="channel"></div></div><nav id="controls"></nav><div class="header-right"><div id="layout-menu"></div><div id="host"></div></div></header>
 <main id="workbench"><aside id="files-index"></aside><div id="workspace"><section id="editor" class="panel">
 <div id="editor-panes"><div id="primary-editor" class="editor-pane"><div class="tabs" id="editor-tabs"></div><div id="editor-content" class="panel-content"></div></div><div id="editor-divider" role="separator" aria-label="Editor split width" hidden></div><div id="secondary-editor" class="editor-pane" hidden><div class="tabs" id="secondary-tabs"></div><div id="secondary-content" class="panel-content"></div></div></div></section>
 <section id="terminal" class="panel"><div class="tabs" id="terminal-tabs"></div><div id="terminal-content" class="panel-content"></div></section></div><aside id="sessions-index"></aside></main>
@@ -44,6 +44,7 @@ const visibility = panels.visible;
 const layout = () => panels.apply();
 panels.menu(get('layout-menu'));
 workspaceMenu(get('version'));
+versionMenu(get('channel'));
 const showMachine = connectionsButton(get('host'), status, (command) => {
   const id = 'connect:' + crypto.randomUUID();
   const info: SessionInfo = {id, name:'SSH · ' + command, cwd:'', kind:'ssh-connect', sshTarget:command, alive:true};

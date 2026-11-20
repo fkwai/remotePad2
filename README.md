@@ -75,7 +75,13 @@ it. Closing an App-linked view detaches that view and leaves the App running.
 
 The top-right label shows the current SSH target when remote (hover for its
 actual hostname) and the local hostname otherwise. Click it for its details and connected
-remote machines. Expand **Add SSH connection** to choose an alias from
+remote machines. Saved machines show their connection state with **Connect**
+or **Open**; the list refreshes while the menu is open. **Save machine** stores
+a destination and optional display name without connecting. Star an SSH config
+alias or an existing connection to save it. The trash button removes that saved
+entry without disconnecting or editing SSH config. This list is stored locally
+in `~/.remotepad2/ssh-machines.json` and shared across channels.
+Expand **Add SSH connection** to choose an alias from
 ~/.ssh/config (including Include files), or enter a host or SSH command:
 
 ```sh
@@ -173,7 +179,9 @@ The gateway replaces per-preview port links. The public default is **6020**:
 Each instance listens on a private Unix socket under `~/.remotepad2/run`;
 there are no internal HTTP ports to allocate. The gateway proxies HTML, APIs,
 file/HTML preview assets and terminal/Codex WebSockets. Windows and local SSH
-settings stay local. Versions → **Start/Switch** opens a lane in the current
+settings stay local. Click the separate **main/dev/nightly badge** beside the
+RemotePad2 wordmark for Versions. The wordmark itself lists only workbench
+sessions and their machines. Versions → **Start/Switch** opens a lane in the current
 window, preserving `?w=` and the SSH selection; Ctrl/Cmd-click opens a new tab.
 Layout/window profiles are shared across channels; selected PTYs are tracked
 per channel because their processes belong to separate backends. A channel

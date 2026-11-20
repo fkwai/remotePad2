@@ -100,7 +100,9 @@ test('drag geometry survives hiding, reload and workspace session switching', as
   await layoutCheck(page, 'Terminal', true);
   expect(await page.locator('#editor').evaluate(el => el.getBoundingClientRect().height)).toBeCloseTo(height, 0);
   await page.getByRole('button', { name: 'RemotePad2', exact: true }).click();
-  await expect(page.locator('.version-info')).toContainText(/@[a-f0-9]{7,}/);
+  await expect(page.locator('#version .version-info')).toHaveCount(0);
+  await expect(page.locator('#version .popover')).toContainText(os.hostname());
+  await expect(page.locator('#version .popover')).toContainText('sessions');
   const next = page.context().waitForEvent('page');
   await page.getByRole('button', { name: '+ New', exact: true }).click();
   const other = await next;
@@ -304,4 +306,72 @@ test('blocked new tab exposes a remote link and retains the current shell', asyn
   await expect(log).toHaveCount(0);
   await expect(page.locator('.terminal-body .xterm')).toBeVisible();
   expect(await page.evaluate(()=>localStorage.getItem('rp2.window.connection-blocked.session'))).toBe(shell);
+});
+
+
+test('SSH manager saves destinations, restores them and removes only the saved entry',async({page,request})=>{
+  const command='ssh -J jump user@saved-cloud';
+  const existing=(await(await request.get('/api/ssh/hosts')).json()).saved||[];
+  for(const machine of existing.filter((x:any)=>x.command===command))await request.delete('/api/ssh/machines/'+machine.id);
+  await page.goto('/?w=ssh-manager');await expect(page.locator('.xterm')).toBeVisible();
+  await page.locator('#host > button').click();await page.locator('#host summary').click();
+  await page.getByRole('textbox',{name:'SSH command',exact:true}).fill(command);
+  await page.getByRole('textbox',{name:'Machine name',exact:true}).fill('Work cloud');
+  await page.getByRole('button',{name:'Save machine',exact:true}).click();
+  const row=page.locator('.ssh-machine').filter({has:page.locator('strong',{hasText:'Work cloud'})});
+  await expect(row).toContainText('Not connected');await expect(row).toContainText(command);
+  await expect(page.locator('#host details')).not.toHaveAttribute('open','');
+  await page.reload();await page.locator('#host > button').click();
+  await expect(row.getByRole('button',{name:'Connect',exact:true})).toBeVisible();
+  let release!:()=>void;const pending=new Promise<void>(resolve=>release=resolve);
+  await page.route('**/api/ssh/connect',async route=>{await pending;await route.fulfill({status:502,json:{error:'Test machine unavailable'}});});
+  await row.getByRole('button',{name:'Connect',exact:true}).click();
+  await expect(row).toContainText('Connecting…');release();
+  await expect(page.locator('.connection-progress')).toContainText('Test machine unavailable');
+  await expect(row).toContainText('Not connected');await expect(row.getByRole('button',{name:'Connect',exact:true})).toBeEnabled();
+  await row.getByRole('button',{name:'Remove saved machine Work cloud',exact:true}).click();
+  await expect(row).toHaveCount(0);
+  await page.locator('#host summary').click();
+  await expect(page.getByRole('button',{name:'test-cloud',exact:true})).toBeVisible();
+  await page.reload();await page.locator('#host > button').click();await expect(row).toHaveCount(0);
+});
+
+test('SSH manager refreshes connection state and opens an already connected machine',async({page,request,context})=>{
+  const command='user@connected-cloud';
+  const saved=(await(await request.post('/api/ssh/machines',{data:{command,name:'Connected cloud'}})).json());
+  let connected=false,connectCalls=0;
+  await page.route('**/api/ssh/hosts',async route=>{
+    const response=await route.fetch();const data=await response.json();data.connected=connected?[command]:[];
+    await route.fulfill({json:data});
+  });
+  await page.route('**/api/ssh/connect',route=>{connectCalls++;return route.fulfill({json:{connected:true}});});
+  await page.goto('/?w=connected-menu');await expect(page.locator('.xterm')).toBeVisible();await page.locator('#host > button').click();
+  const row=page.locator('.ssh-machine').filter({has:page.locator('strong',{hasText:'Connected cloud'})});
+  await expect(row).toContainText('Not connected');connected=true;
+  await page.getByRole('button',{name:'Refresh SSH connections',exact:true}).click();
+  await expect(row).toContainText('Connected');await expect(row.getByRole('button',{name:'Open',exact:true})).toBeVisible();
+  await page.screenshot({path:path.join(root,'ssh-manager.png')});
+  const next=context.waitForEvent('page');await row.getByRole('button',{name:'Open',exact:true}).click();
+  const remote=await next;await expect(remote).toHaveURL(/w=connected-menu&ssh=user%40connected-cloud/);await remote.close();
+  expect(connectCalls).toBe(0);
+  await page.locator('#host > button').click();
+  await row.getByRole('button',{name:'Remove saved machine Connected cloud',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Remove saved machine Connected cloud',exact:true})).toHaveCount(0);
+  await expect(page.locator('.ssh-machine').filter({hasText:command}).getByRole('button',{name:'Open',exact:true})).toBeVisible();
+  await request.delete('/api/ssh/machines/'+saved.id);
+});
+
+
+test('SSH config aliases can be saved and removed without changing config',async({page,request})=>{
+  const entries=(await(await request.get('/api/ssh/hosts')).json()).saved||[];
+  for(const machine of entries.filter((x:any)=>x.command==='test-cloud'))await request.delete('/api/ssh/machines/'+machine.id);
+  await page.goto('/');await page.locator('#host > button').click();await page.locator('#host summary').click();
+  await page.getByRole('button',{name:'Save test-cloud',exact:true}).click();
+  const row=page.locator('.ssh-machine').filter({has:page.locator('strong',{hasText:/^test-cloud$/})});
+  await expect(row).toContainText('Not connected');
+  await expect(page.getByRole('button',{name:'Saved test-cloud',exact:true})).toBeDisabled();
+  await row.getByRole('button',{name:'Remove saved machine test-cloud',exact:true}).click();
+  await expect(row).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'test-cloud',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Save test-cloud',exact:true})).toBeEnabled();
 });
