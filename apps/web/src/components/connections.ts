@@ -1,10 +1,12 @@
+import type { SshProgress } from '@remotepad2/protocol';
+import type { SshConnectionPanel } from './ssh-connection';
 import { localFetch } from '../base';
 import { profile, sshTarget } from '../connection';
 import { button } from '../api';
 import { popover } from './popover';
 
-export function connectionsButton(host: HTMLElement, status: (message: string) => void, hostname?: string) {
-  const toggle = popover(host, 'Computers', (current) => {
+export function connectionsButton(host: HTMLElement, status: (message: string) => void, showConnection: (command: string) => SshConnectionPanel) {
+  const toggle = popover(host, 'Computers', (current, close) => {
     const info = document.createElement('div'); info.textContent = 'Loading local machine…'; current.append(info);
     const active = document.createElement('div'); current.append(active);
     const add = document.createElement('details');
@@ -20,12 +22,17 @@ export function connectionsButton(host: HTMLElement, status: (message: string) =
       for (const control of Array.from(current.querySelectorAll('button'))) control.disabled = true;
       progress.textContent = 'Connecting to ' + command + ' · preparing remote backend…';
       status(progress.textContent);
-      const started = Date.now();
+      const view = showConnection(command);
       let finished = false;
+      const readProgress = async (final = false) => {
+        const response = await localFetch('/api/ssh/' + encodeURIComponent(command) + '/status?after=' + view.after);
+        const data = await response.json() as SshProgress; if (response.ok && (!finished || final)) view.update(data); return data;
+      };
+      const started = Date.now();
       let checking = false;
       const poll = window.setInterval(() => {
         if (checking) return; checking = true;
-        void localFetch('/api/ssh/' + encodeURIComponent(command) + '/status').then((response) => response.json()).then((data) => {
+        void readProgress().then((data) => {
           if (finished) return;
           const elapsed = Math.floor((Date.now() - (data.startedAt || started)) / 1000);
           const message = 'Connecting to ' + command + ' · ' + (data.phase || 'Preparing remote backend') + ' · ' + elapsed + 's';
@@ -37,8 +44,19 @@ export function connectionsButton(host: HTMLElement, status: (message: string) =
         const response = await localFetch('/api/ssh/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ host: command }) });
         const data = await response.json(); if (!response.ok) throw new Error(data.error);
         const url = new URL(location.href); url.searchParams.set('ssh', command); if (profile !== 'default') url.searchParams.set('w', profile);
-        location.assign(url.href);
+        finished = true; window.clearInterval(poll);
+        await readProgress(true).catch(() => {});
+        view.finish(url.href);
+        const remote = window.open(url.href, '_blank');
+        if (remote) { remote.opener = null; close(); status('Connected to ' + command + ' · opened in a new tab'); }
+        else {
+          progress.textContent = 'Connected · open remote workspace ↗';
+          const open = document.createElement('a'); open.href = url.href; open.target = '_blank'; open.rel = 'noopener'; open.textContent = 'Open remote workspace'; progress.append(document.createElement('br'), open);
+          status('Connected to ' + command + ' · use Open remote workspace in the connection terminal');
+        }
       } catch (error) {
+        finished = true; window.clearInterval(poll);
+        await readProgress(true).catch(() => {}); view.finish(undefined, (error as Error).message);
         progress.textContent = (error as Error).message; status('SSH ' + command + ': ' + progress.textContent);
         for (const control of Array.from(current.querySelectorAll('button'))) control.disabled = false;
       } finally { finished = true; window.clearInterval(poll); }
@@ -63,7 +81,7 @@ export function connectionsButton(host: HTMLElement, status: (message: string) =
     }).catch((error) => { info.textContent = 'Machine information unavailable'; status(error.message); });
   });
   toggle.textContent = sshTarget || 'Local machine';
-  toggle.title = sshTarget ? 'SSH: ' + sshTarget + (hostname ? ' · ' + hostname : '') : 'Local machine';
+  toggle.title = sshTarget ? 'SSH: ' + sshTarget + '' : 'Local machine';
   toggle.classList.toggle('remote-target', Boolean(sshTarget));
   void localFetch('/api/ssh/hosts').then((r) => r.json()).then((data) => { if (!sshTarget) { toggle.textContent = data.local.hostname; toggle.title = 'Local machine'; } }).catch(() => {});
   return (remoteHostname: string) => { if (sshTarget) toggle.title = 'SSH: ' + sshTarget + ' · ' + remoteHostname; };

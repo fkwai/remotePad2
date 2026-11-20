@@ -88,9 +88,14 @@ Terminal-first web workbench, developed in this repository on dev.
   Its Computers menu starts with
   user/platform/home and connected remotes; Add SSH connection is collapsed
   until clicked, then reveals config aliases (including Includes) and command input.
+- Connecting opens a read-only SSH process log in a Terminal tab; bootstrap
+  stderr and the tunnel command are streamed through cursor-based status polling.
+  Closing the log only disposes the view; it never cancels SSH or ends a shell.
+  Success opens a new browser tab retaining lane, ?w= and setting ?ssh=; the
+  original workspace stays open. Popup-blocked browsers get an explicit link.
 - SSH parsing accepts a config alias, user@host, or ssh with -p/-i/-J.
   Arguments go directly to OpenSSH; arbitrary remote commands are rejected.
-- ssh.ts installs a versioned API backend under ~/.remotepad2/backend on the
+- ssh.ts installs a versioned API backend under ~/.remotepad2/backend/<channel>/<revision> on the
   target. Target prerequisites are POSIX/OpenSSH and Node.js 22+ with npm. Missing or
   mismatched pnpm is bootstrapped at the version in package.json into
   ~/.remotepad2/tools, without changing global tools or shell configuration.
@@ -145,3 +150,8 @@ Terminal-first web workbench, developed in this repository on dev.
 - Gateway tests: pnpm test:gateway. They start 3 throwaway full backends over
   Unix sockets behind one throwaway gateway on E2E_PORT; no live lane is touched.
   Tests use portable ~/work/tmp paths (REMOTEPAD2_TEST_TMP overrides unit temp root).
+
+- A selected lane owns UI + local API + SSH worker. Remote installs and sockets
+  include main/dev/nightly plus revision, preventing identical-code lanes from
+  sharing PTYs. Worker health reports its channel. Changing a lane never kills
+  another worker. Target project files remain shared, not sandboxed per lane.

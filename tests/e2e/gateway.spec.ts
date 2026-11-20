@@ -46,3 +46,36 @@ test('version Switch preserves window and shell processes across branch instance
  await expect(page.locator('.xterm')).toBeVisible();
  expect(await page.evaluate(()=>localStorage.getItem('rp2.window.lane-switch.session.dev'))).toBe(devSession);
 });
+
+
+test('SSH completion opens the same lane in a new tab after its log was closed',async({page,context})=>{
+ let release!:()=>void;
+ const pending=new Promise<void>(resolve=>release=resolve);
+ const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+ await context.route('**/dev/api/ssh/hosts',route=>route.fulfill({json:{local:{hostname:'local-test',user:'test',platform:'test',arch:'test',homedir:fixtures},hosts:['test-cloud'],connected:[]}}));
+ await context.route('**/dev/api/ssh/test-cloud/status*',route=>route.fulfill({json:{phase:'Opening SSH tunnel',runId:'new-tab',logs:[{seq:1,text:'$ ssh -N test-cloud\r\n'}]}}));
+ await context.route('**/dev/api/ssh/connect',async route=>{await pending;await route.fulfill({json:{connected:true}});});
+ await context.route('**/dev/api/ssh/test-cloud/proxy/**',async route=>{
+   const url=new URL(route.request().url());
+   const response=await route.fetch({url:url.origin+'/dev/api/'+url.pathname.split('/proxy/')[1]+url.search});
+   await route.fulfill({response});
+ });
+ await page.goto('/dev/?w=remote-new-tab');
+ await expect(page.locator('.xterm')).toBeVisible();
+ const original=page.url();
+ const shell=await page.evaluate(()=>localStorage.getItem('rp2.window.remote-new-tab.session.dev'));
+ await page.locator('#host > button').click();await page.locator('#host summary').click();
+ await page.getByRole('button',{name:'test-cloud',exact:true}).click();
+ await expect(page.locator('.connection-body .xterm-screen')).toContainText('$ ssh -N test-cloud');
+ expect(context.pages()).toHaveLength(1);
+ await page.keyboard.press('Escape');
+ await page.getByRole('button',{name:'Close connection log (keep SSH connected)',exact:true}).click();
+ const newPage=context.waitForEvent('page');release();
+ const remote=await newPage;
+ await expect(remote).toHaveURL(/\/dev\/\?w=remote-new-tab&ssh=test-cloud/);
+ await expect(remote.locator('#host > button')).toHaveText('test-cloud');
+ expect(page.url()).toBe(original);
+ await expect(page.locator('.terminal-body .xterm')).toBeVisible();
+ expect(await page.evaluate(()=>localStorage.getItem('rp2.window.remote-new-tab.session.dev'))).toBe(shell);
+ expect(errors).toEqual([]);
+});

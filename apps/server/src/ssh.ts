@@ -1,3 +1,5 @@
+import { remoteRuntime } from './ssh-runtime.ts';
+import { ConnectionLog, displayCommand } from './ssh-log.ts';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -13,10 +15,14 @@ const common = ['-T', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
   '-o', 'ConnectTimeout=10', '-o', 'ControlMaster=no', '-o', 'ControlPath=none',
   '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3'];
 const connections = new Map<string, { socket: string; child: ChildProcess }>();
+const transcripts = new Map<string, ConnectionLog>();
+export const sshTranscript = (input: string, after = 0) => transcripts.get(input)?.read(after);
+const log = (input: string, text: string) => transcripts.get(input)?.write(text);
 const progress = new Map<string, { phase: string; startedAt: number; phaseSince: number; error?: string }>();
 export const sshProgress = (input: string) => progress.get(input);
 function phase(input: string, value: string, error?: string) {
   const previous = progress.get(input);
+  if (previous?.phase !== value) log(input, '\r\n[' + value + ']\r\n');
   progress.set(input, { phase: value, startedAt: previous?.startedAt || Date.now(), phaseSince: previous?.phase === value ? previous.phaseSince : Date.now(), ...(error ? { error } : {}) });
 }
 const pending = new Map<string, Promise<void>>();
@@ -41,13 +47,20 @@ function execSsh(input: string, command: string, body?: Buffer) {
   const { options, host } = parseSsh(input);
   return new Promise<string>((resolve, reject) => {
     let lines = '';
+    log(input, '$ ' + displayCommand(['ssh', ...common, ...options, '-o', 'ClearAllForwardings=yes', '--', host]) + ' [prepare RemotePad backend]\r\n');
     const child = execFile('ssh', [...common, ...options, '-o', 'ClearAllForwardings=yes', '--', host, command],
       { timeout: 180000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) =>
-        error ? reject(new Error(stderr.replace(/^REMOTEPAD2_PHASE=.*$/gm, '').trim().slice(-1800) || error.message)) : resolve(stdout.trim()));
+        {
+        if (lines) log(input, lines + '\r\n');
+        const visible = stdout.replace(/^REMOTEPAD2_UID=.*$/gm, '').trim(); if (visible) log(input, visible + '\r\n');
+        if (error) reject(new Error(stderr.replace(/^REMOTEPAD2_PHASE=.*$/gm, '').trim().slice(-1800) || error.message)); else resolve(stdout.trim());
+      });
     child.stderr?.on('data', (chunk) => {
       lines += chunk.toString();
       const complete = lines.split('\n'); lines = complete.pop() || '';
-      for (const line of complete) if (/^REMOTEPAD2_PHASE=/.test(line)) phase(input, line.slice('REMOTEPAD2_PHASE='.length));
+      for (const line of complete) {
+        if (/^REMOTEPAD2_PHASE=/.test(line)) phase(input, line.slice('REMOTEPAD2_PHASE='.length)); else log(input, line + '\r\n');
+      }
     });
     child.stdin?.on('error', () => {});
     child.stdin?.end(body);
@@ -68,7 +81,8 @@ async function connect(input: string) {
     'apps/server/src', 'apps/server/scripts', 'apps/server/package.json', 'apps/server/tsconfig.json',
     'packages/protocol'], { cwd: root, encoding: 'buffer', maxBuffer: 32 * 1024 * 1024, env: { ...process.env, COPYFILE_DISABLE: '1' } });
   const revision = createHash('sha256').update(bundle).digest('hex').slice(0, 20);
-  const install = `"$HOME/.remotepad2/backend/${revision}"`;
+  const runtime = remoteRuntime(revision);
+  const install = `"$HOME/${runtime.install}"`;
   // A versioned backend survives the transport. Reconnecting reuses its PTYs.
   phase(input, 'SSH login');
   const output = await execSsh(input, `
@@ -78,10 +92,10 @@ async function connect(input: string) {
     export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:/opt/homebrew/bin:/usr/local/bin:$PATH"
     command -v node >/dev/null || { echo 'Node.js 22+ is required in non-interactive SSH PATH.' >&2; exit 1; }
     node -e 'if(Number(process.versions.node.split(".")[0])<22)process.exit(1)' || { echo 'Node.js 22+ is required.' >&2; exit 1; }
-    mkdir -p "$HOME/.remotepad2/backend"
+    mkdir -p "$HOME/.remotepad2/backend/${runtime.channel}"
     if ! test -f ${install}/.ready; then
       echo REMOTEPAD2_PHASE=Installing\ backend\ dependencies >&2
-      stage=$(mktemp -d "$HOME/.remotepad2/backend/.install.XXXXXXXX")
+      stage=$(mktemp -d "$HOME/.remotepad2/backend/${runtime.channel}/.install.XXXXXXXX")
       trap 'rm -rf "$stage"' EXIT
       tar -xf - -C "$stage"
       pnpm_version=$(node -e 'const p=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")).packageManager;if(!/^pnpm@[0-9]+[.][0-9]+[.][0-9]+$/.test(p))throw Error("Invalid pnpm version");console.log(p.slice(5))' "$stage/package.json")
@@ -103,7 +117,8 @@ async function connect(input: string) {
       cat >/dev/null
     fi
     echo REMOTEPAD2_PHASE=Starting\ remote\ backend >&2
-    socketdir="/tmp/rp2-$(id -u)-${revision}"
+    export REMOTEPAD2_CHANNEL=${runtime.channel}
+    socketdir="${runtime.socketDirectory}"
     mkdir -p "$socketdir"
     chmod 700 "$socketdir"
     export REMOTEPAD2_WORKER_SOCKET="$socketdir/api.sock"
@@ -119,17 +134,18 @@ async function connect(input: string) {
   `, bundle);
   const dir = await mkdtemp('/tmp/rp2-ssh-');
   const socket = dir + '/api.sock';
-  const remoteSocket = `/tmp/rp2-$(id -u)-${revision}/api.sock`;
+  const remoteSocket = runtime.socketDirectory + "/api.sock";
   // Read the UID from the same bootstrap connection, avoiding another SSH handshake.
   const uid = output.match(/(?:^|\n)REMOTEPAD2_UID=(\d+)(?:\n|$)/)?.[1];
   if (!uid) throw new Error('Could not resolve remote user.');
   const remote = remoteSocket.replace('$(id -u)', uid);
   phase(input, 'Opening SSH tunnel');
+  log(input, '$ ' + displayCommand(['ssh', ...common, ...options, '-N', '-o', 'ExitOnForwardFailure=yes', '-L', `${socket}:${remote}`, '--', host]) + '\r\n');
   const child = spawn('ssh', [...common, ...options, '-N', '-o', 'ExitOnForwardFailure=yes', '-L', `${socket}:${remote}`, '--', host], { stdio: ['ignore', 'ignore', 'pipe'] });
   let failure = '', ended = false;
-  child.stderr.on('data', (data) => { failure = (failure + data).slice(-1500); });
+  child.stderr.on('data', (data) => { failure = (failure + data).slice(-1500); log(input, data.toString()); });
   child.on('error', (error) => { failure = error.message; ended = true; });
-  child.once('close', () => { ended = true; if (connections.get(input)?.child === child) connections.delete(input); void rm(dir, { recursive: true, force: true }); });
+  child.once('close', () => { ended = true; if (connections.get(input)?.child === child) { connections.delete(input); phase(input, 'Disconnected'); } void rm(dir, { recursive: true, force: true }); });
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline && !ended) {
     if (await healthy(socket)) { connections.set(input, { socket, child }); phase(input, 'Connected'); return; }
@@ -143,8 +159,8 @@ export function connectSsh(input: string) {
   parseSsh(input);
   if (connections.has(input)) return Promise.resolve();
   if (pending.has(input)) return pending.get(input)!;
-  progress.delete(input);
-  const task = connect(input).catch((error) => { phase(input, 'Failed', error.message); throw error; }).finally(() => pending.delete(input));
+  progress.delete(input); transcripts.set(input, new ConnectionLog());
+  const task = connect(input).catch((error) => { phase(input, 'Failed', error.message); log(input, error.message + '\r\n'); throw error; }).finally(() => pending.delete(input));
   pending.set(input, task);
   return task;
 }

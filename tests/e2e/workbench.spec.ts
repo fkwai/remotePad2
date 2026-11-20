@@ -169,7 +169,7 @@ test('editor uses bottom source toggle, menu save and shared editable split pane
 test('SSH progress and failure stay visible while aliases remain expanded', async ({page}) => {
   let release:()=>void;
   const pending=new Promise<void>(resolve=>release=resolve);
-  await page.route('**/api/ssh/test-cloud/status', route=>route.fulfill({json:{phase:'Installing backend dependencies',startedAt:Date.now()-3000}}));
+  await page.route('**/api/ssh/test-cloud/status*', route=>route.fulfill({json:{runId:'failed-attempt',phase:'Installing backend dependencies',startedAt:Date.now()-3000,logs:[{seq:1,text:'$ ssh test-cloud\r\nInstalling backend dependencies\r\n'}]}}));
   await page.route('**/api/ssh/connect',async route=>{await pending; await route.fulfill({status:502,contentType:'application/json',body:JSON.stringify({error:'Test forwarding failure'})});});
   await page.goto('/');
   await expect(page.locator('#host > button')).not.toHaveText('Local machine');
@@ -181,8 +181,10 @@ test('SSH progress and failure stay visible while aliases remain expanded', asyn
   await expect(page.locator('#status')).toContainText('Connecting to test-cloud');
   await expect(progress).toContainText('Installing backend dependencies');
   await expect(progress).toContainText('s');
+  await expect(page.locator('.connection-body .xterm-screen')).toContainText('$ ssh test-cloud');
   release!();
   await expect(progress).toContainText('Test forwarding failure');
+  await expect(page.locator('.connection-body .xterm-screen')).toContainText('Test forwarding failure');
   await expect(page.getByRole('button',{name:'test-cloud',exact:true})).toBeEnabled();
 });
 
@@ -281,4 +283,25 @@ test('expansion responds before a slow listing and double-click shares the pendi
   await expect.poll(()=>requests).toBe(1);
   release();
   await expect(row(page,'ready.txt')).toBeVisible();
+});
+
+
+test('blocked new tab exposes a remote link and retains the current shell', async ({page}) => {
+  await page.addInitScript(()=>{window.open=()=>null;});
+  await page.route('**/api/ssh/test-cloud/status*', route=>route.fulfill({json:{connected:true,phase:'Connected',runId:'success',logs:[{seq:1,text:'$ ssh -N test-cloud\r\n'}]}}));
+  await page.route('**/api/ssh/connect', route=>route.fulfill({json:{connected:true}}));
+  await page.goto('/?w=connection-blocked');
+  await expect(page.locator('.xterm')).toBeVisible();
+  const shell=await page.evaluate(()=>localStorage.getItem('rp2.window.connection-blocked.session'));
+  await page.locator('#host > button').click();await page.locator('#host summary').click();
+  await page.getByRole('button',{name:'test-cloud',exact:true}).click();
+  const log=page.locator('.connection-body');
+  await expect(log.getByRole('link',{name:'Open remote workspace ↗'})).toHaveAttribute('href', /w=connection-blocked&ssh=test-cloud/);
+  await expect(log.locator('.xterm-screen')).toContainText('$ ssh -N test-cloud');
+  expect(new URL(page.url()).searchParams.has('ssh')).toBe(false);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Close connection log (keep SSH connected)',exact:true}).click();
+  await expect(log).toHaveCount(0);
+  await expect(page.locator('.terminal-body .xterm')).toBeVisible();
+  expect(await page.evaluate(()=>localStorage.getItem('rp2.window.connection-blocked.session'))).toBe(shell);
 });

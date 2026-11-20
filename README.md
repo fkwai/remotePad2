@@ -84,13 +84,18 @@ ssh -p 22 -i "/path/to/key" -J jump-host user@machine
 
 Connection progress shows the current phase and elapsed seconds: SSH login,
 checking/installing the backend, opening the tunnel and health validation.
+The Terminal panel opens a read-only SSH log tab with the actual bootstrap and
+tunnel process output. Closing that log leaves the connection running. Once
+connected, a new browser tab opens the remote workspace in the same channel
+and window profile; the original workspace stays open. If the browser blocks
+the new tab, use **Open remote workspace** in the log.
 A matching backend is reused; new backend revisions install once. Jump-host
 handshakes can account for most connection time.
 
 The connection uses your existing OpenSSH keys and known hosts. Authenticate
 and verify a new host in Terminal first if needed. The first connection
 uploads the API source and installs locked dependencies under
-~/.remotepad2/backend on the remote machine. That machine needs OpenSSH Unix
+~/.remotepad2/backend/<channel>/<revision> on the remote machine. That machine needs OpenSSH Unix
 socket forwarding, a POSIX shell and Node.js 22+ with npm in its non-interactive PATH.
 RemotePad2 reuses a matching pnpm or prepares its pinned version under
 ~/.remotepad2/tools automatically. Global packages and shell startup files
@@ -100,7 +105,9 @@ The backend runs as your SSH user on a private Unix socket and survives a
 transport disconnect. Files, terminals and Codex metadata belong to the selected
 machine. Local SSH config stays on the local machine. Directory and session
 restore keys are scoped by SSH target. Reconnect from the menu after restarting
-the local server. Each backend revision has its own running sessions.
+the local server. Each channel and backend revision has its own worker and running sessions.
+Switching channels never terminates another channel’s shells. Project files
+on the same target are shared; channels are not filesystem sandboxes.
 
 Shells survive refresh, browser closure and network loss while the backend
 remains running. Sessions Index can reopen them with bounded output replay.
@@ -169,7 +176,9 @@ file/HTML preview assets and terminal/Codex WebSockets. Windows and local SSH
 settings stay local. Versions → **Start/Switch** opens a lane in the current
 window, preserving `?w=` and the SSH selection; Ctrl/Cmd-click opens a new tab.
 Layout/window profiles are shared across channels; selected PTYs are tracked
-per channel because their processes belong to separate backends.
+per channel because their processes belong to separate backends. A channel
+selects its UI, local server and matching SSH worker together. Remote workers
+are namespaced by channel even when code revisions are identical.
 
 ```sh
 pnpm gateway              # one public listener; leave running
