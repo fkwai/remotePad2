@@ -1,4 +1,5 @@
 import os from 'node:os';
+import { registerSearch } from './search.ts';
 import { registerWindows } from './windows.ts';
 import { registerVersion } from './version.ts';
 import { previewKey, previewRequest } from './preview-access.ts';
@@ -38,6 +39,7 @@ app.get('/api/health', async () => ({ ok: true, hostname: os.hostname(), pid: pr
 await registerTerminal(app);
 await registerCodexApp(app);
 await registerFiles(app);
+registerSearch(app);
 await registerNavigation(app);
 if (!workerSocket) await registerSshRoutes(app);
 const web = fileURLToPath(new URL('../../web/dist/', import.meta.url));

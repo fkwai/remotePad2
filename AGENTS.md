@@ -24,8 +24,20 @@ Terminal-first web workbench, developed in this repository on dev.
   locally and through SSH without allowing sandbox access to normal APIs.
 - File tree address input lives in the Go to path popover beside Refresh;
   .* toggles dotfiles in both tree and Explorer and persists per window.
-  File tree is its own scroll container: parent row, root and selected ancestors
-  stick to the top while the rest scrolls.
+  File tree is its own scroll container. Parent row plus every expanded folder
+  in the scrolled subtree stick consecutively at 28px intervals, independent of
+  selection. Nested .tree-branch containers bound stickiness to each subtree;
+  there is no top padding/margin gap or sticky bleed into sibling branches.
+- File tools are icon-only Search / Favorites / Repos, followed by Refresh,
+  Go to path and hidden-files. The first three toggle independent docked
+  sections (all enabled initially), persisted per window as sidebar-panels.
+  Favorites/Repos are no longer mutually exclusive tabs. SVG icons share one
+  stroke style; directory pin toggles remain independent.
+- Filename search: /api/search (local or SSH) returns bounded nested file/dir
+  matches, respecting hidden files and skipping dependency/cache directories.
+  Search input debounces requests and cancels stale responses; it never delays
+  folder clicks. Pending listings for the same directory share one request,
+  so double-click does not send duplicate tree loads. Sidebar panel visibility is in the server window snapshot.
 - Folder Explorer opens from directory-popup Enter or tree right-click Open in
   Explorer (double-click / Enter shortcuts). No Open folder toolbar button.
   Tree rows keep their DOM identity: click toggles immediately; the second

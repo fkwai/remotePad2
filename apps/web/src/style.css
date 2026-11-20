@@ -154,7 +154,6 @@ footer { padding: 6px 16px; color: #a7afb6; font-size: 11px; border-top: 1px sol
 .layout-unused { background: #30343b; border-radius: 3px; opacity: .5; }
 .files-index { display: flex; flex-direction: column; overflow: hidden; }
 .files-index > h2, .files-index > .index-modes, .file-actions { flex-shrink: 0; }
-.files-index > div:nth-child(3) { max-height: 25%; overflow: auto; }
 .file-actions { display: flex; align-items: center; gap: 4px; padding: 4px 0; }
 .index .file-actions button { width: auto; display: inline-block; }
 .index .file-actions .popover button { display: block; width: 100%; }
@@ -194,3 +193,33 @@ footer { padding: 6px 16px; color: #a7afb6; font-size: 11px; border-top: 1px sol
 button.icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 5px; flex-shrink: 0; }
 #layout-menu .layout-popover > .icon-button { display: flex; width: 28px; margin-left: auto; }
 #host > button.remote-target { color: #a6d3b4; background: #7ee0c510; max-width: 35vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* File tools are independently docked; tree alone owns scrolling. */
+.files-index .file-actions { margin: 0; padding: 0 0 6px; gap: 2px; }
+.index .file-actions button.icon-button { display: inline-flex; width: 28px; height: 28px; padding: 5px; }
+.file-tools-spacer { flex: 1; }
+.files-index > .file-tool-panels { flex: 0 1 auto; min-height: 0; max-height: 45%; overflow-y: auto; }
+.file-search input { margin: 0 0 4px; padding: 6px 8px; font: inherit; }
+.file-search-results { max-height: 150px; overflow: auto; }
+.index .file-search-hit { padding: 5px 6px; }
+.file-search-hit span, .file-search-hit small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-search-hit small, .pins-empty, .file-search-results > small { color: #8b95a6; font-size: 10px; }
+.pin-section { border-top: 1px solid #2c3034; padding: 5px 0; }
+.pin-section h3 { font-size: 10px; color: #8b95a6; font-weight: 600; margin: 2px 6px; }
+.pins-empty { display: block; padding: 4px 6px; }
+.pin-section .pin-row > button:first-child { padding: 4px 6px; }
+.file-tree { margin: 0; padding: 0; border-top: 1px solid #2c3034; }
+.tree-branch { position: relative; }
+.file-tree .tree-parent { z-index: 110; border-radius: 0; }
+.tree-row { border-radius: 0; }
+.index .tree-row button.icon-button { width: 23px; height: 28px; min-width: 23px; padding: 5px; display: inline-flex; }
+.tree-chevron svg { width: 13px; height: 13px; }
+.tree-chevron.expanded svg { transform: rotate(90deg); }
+.tree-pin svg { width: 13px; height: 13px; }
+.tree-pin.pin-favorites.on svg { fill: #b5d9a52b; }
+.file-tree { isolation: isolate; }
+.file-actions { position: relative; z-index: 2; }
+.file-actions > .popover-host { position: static; }
+.file-actions .popover { left: 0; right: 0; width: auto; max-width: 100%; }
+.file-actions button[aria-label=Favorites][aria-pressed=true], .tree-pin.pin-favorites.on { color: #e6c07b; }
+.tree-pin.pin-favorites.on svg { fill: #e6c07b22; }
+.file-actions button[aria-label=Repos][aria-pressed=true], .tree-pin.pin-repos.on { color: #9bc2ee; }

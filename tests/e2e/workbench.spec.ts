@@ -216,3 +216,69 @@ test('SSH target stays in header after local-host discovery; layout/reset/refres
   await page.locator('#host > button').click();
   await expect(page.getByRole('button',{name:'Switch to local',exact:true})).toBeVisible();
 });
+
+test('nested expanded folders freeze without selecting a leaf, with no gaps or sibling bleed', async ({page}) => {
+  const a=path.join(fixtures,'sticky-A'), b=path.join(a,'sticky-B'), c=path.join(fixtures,'sticky-C');
+  await mkdir(b,{recursive:true});await mkdir(c,{recursive:true});
+  for(let i=0;i<60;i++){await writeFile(path.join(b,'file-'+i+'.txt'),'x');await writeFile(path.join(c,'sibling-'+i+'.txt'),'x');}
+  await browse(page);
+  await row(page,'sticky-A').locator('.tree-name').click();
+  await row(page,'sticky-B').locator('.tree-name').click();
+  await expect(row(page,'file-0.txt')).toHaveCount(1);
+  await row(page,'sticky-C').locator('.tree-name').click();
+  const tree=page.locator('.file-tree');
+  await tree.evaluate(el=>{const a=Array.from(el.querySelectorAll<HTMLElement>('.tree-row')).find(r=>r.dataset.path?.endsWith('/sticky-A'))!;el.scrollTop+=a.closest('.tree-branch')!.getBoundingClientRect().top-el.getBoundingClientRect().top+300;});
+  const rootRow=page.locator('.tree-row').filter({has:page.locator('.tree-name',{hasText:/^fixtures$/})});
+  const up=(await tree.locator(':scope > .tree-parent').boundingBox())!, rootBox=(await rootRow.boundingBox())!, aBox=(await row(page,'sticky-A').boundingBox())!, bBox=(await row(page,'sticky-B').boundingBox())!;
+  const treeBox=(await tree.boundingBox())!;
+  expect(Math.abs(up.y-treeBox.y-1)).toBeLessThan(1.5);
+  expect(Math.abs(rootBox.y-up.y-up.height)).toBeLessThan(1.5);
+  expect(Math.abs(aBox.y-rootBox.y-rootBox.height)).toBeLessThan(1.5);
+  expect(Math.abs(bBox.y-aBox.y-aBox.height)).toBeLessThan(1.5);
+  await page.screenshot({path:path.join(root,'tree-nested.png')});
+  await tree.evaluate(el=>{const c=Array.from(el.querySelectorAll<HTMLElement>('.tree-row')).find(r=>r.dataset.path?.endsWith('/sticky-C'))!;el.scrollTop+=c.closest('.tree-branch')!.getBoundingClientRect().top-el.getBoundingClientRect().top+200;});
+  const nextRoot=(await rootRow.boundingBox())!, nextC=(await row(page,'sticky-C').boundingBox())!;
+  expect(Math.abs(nextC.y-nextRoot.y-nextRoot.height)).toBeLessThan(1.5);
+  expect((await row(page,'sticky-B').boundingBox())!.y+28).toBeLessThanOrEqual(nextRoot.y+nextRoot.height+1);
+});
+
+test('search Favorites and Repos are independent docked tools and remember visibility',async({page})=>{
+  await browse(page);
+  const toolbar=page.getByRole('toolbar',{name:'Files tools'});
+  for(const name of ['Search','Favorites','Repos']){
+    const control=toolbar.getByRole('button',{name,exact:true});
+    await expect(control).toHaveText('');await expect(control.locator('svg')).toBeVisible();
+    await expect(control).toHaveAttribute('aria-pressed','true');
+  }
+  await expect(page.getByLabel('Favorites panel',{exact:true})).toBeVisible();
+  await expect(page.getByLabel('Repos panel',{exact:true})).toBeVisible();
+  await page.getByRole('searchbox',{name:'Search files'}).fill('note.py');
+  await expect(page.locator('.file-search-hit')).toContainText('note.py');
+  await expect(page.getByLabel('Favorites panel',{exact:true})).toBeVisible();
+  await expect(page.getByLabel('Repos panel',{exact:true})).toBeVisible();
+  await page.locator('.file-search-hit').click();
+  await expect(page.getByRole('textbox',{name:'File content'})).toHaveValue('print("hello")\n');
+  await toolbar.getByRole('button',{name:'Favorites',exact:true}).click();
+  await expect(page.getByLabel('Favorites panel',{exact:true})).toBeHidden();
+  await expect(page.getByLabel('Repos panel',{exact:true})).toBeVisible();
+  await page.reload();
+  await expect(toolbar.getByRole('button',{name:'Favorites',exact:true})).toHaveAttribute('aria-pressed','false');
+  await expect(page.getByRole('searchbox',{name:'Search files'})).toBeVisible();
+  await expect(page.getByLabel('Repos panel',{exact:true})).toBeVisible();
+});
+
+test('expansion responds before a slow listing and double-click shares the pending request',async({page})=>{
+  const folder=path.join(fixtures,'latency-folder');await mkdir(folder,{recursive:true});await writeFile(path.join(folder,'ready.txt'),'ready');
+  await browse(page);
+  let requests=0,release!:()=>void;const pending=new Promise<void>(resolve=>release=resolve);
+  await page.route('**/api/files?path=*',async route=>{
+    if(new URL(route.request().url()).searchParams.get('path')===folder){requests++;await pending;}
+    await route.continue();
+  });
+  const directory=row(page,'latency-folder');
+  await directory.locator('.tree-name').dblclick();
+  await expect(directory).toHaveAttribute('aria-expanded','true');
+  await expect.poll(()=>requests).toBe(1);
+  release();
+  await expect(row(page,'ready.txt')).toBeVisible();
+});

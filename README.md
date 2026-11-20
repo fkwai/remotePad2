@@ -43,7 +43,10 @@ resize; hidden panels keep their last dimensions. Files and sessions open in the
 Editor and Terminal tabs. The fixed layout has Files Index on the left, Sessions Index on the right,
 and Editor above Terminal in the center. All four areas are initially visible.
 
-Files Index offers an expandable tree, Favorites and Repos. Existing RemotePad
+Files Index has an icon toolbar for Search, Favorites and Repos. These toggle
+independent docked sections, so all three can stay open together; visibility is
+saved with the window. Filename search includes nested folders, respects the
+hidden-file filter and skips dependency/cache directories. Existing RemotePad
 pins are copied once into ~/.remotepad2/navigation.json and managed separately.
 Each tree directory has ◆ Repo and ★ Favorite toggles, independent of expansion.
 
@@ -116,8 +119,9 @@ in sandboxed iframes with relative images, scripts and styles resolved through
 the selected machine. Binary previews allow up to 32 MB.
 
 The tree address input is a popup opened with **Go to path**, beside Refresh.
-The **.*** button shows/hides dotfiles in tree and Explorer. The root and
-selected ancestor directories stay frozen at the top of the tree while scrolling.
+The **.*** button shows/hides dotfiles in tree and Explorer. Expanded ancestor directories stay frozen in a continuous stack while scrolling,
+without selecting a leaf. Each stack stops at its subtree boundary; siblings
+never inherit old frozen rows.
 
 Use directory-popup Enter or a folder’s **Open in Explorer** context
 menu to open a folder tab. The tree expands on a single click; double-click

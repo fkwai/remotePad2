@@ -68,3 +68,17 @@ test('window profiles persist independently by machine and can forget default wi
     assert.equal((await app.inject({method:'PUT',url:'/api/windows/bad',payload:{state:{a:42}}})).statusCode,400);
   } finally { await app.close(); await rm(home,{recursive:true,force:true}); }
 });
+
+test('filename search finds nested matches, honors hidden filter and skips dependency trees',async()=>{
+  const {registerSearch}=await import('../apps/server/src/search.ts');
+  const {mkdir}=await import('node:fs/promises');
+  const root=await mkdtemp(path.join(tempRoot,'rp2-search-')); const app=Fastify();registerSearch(app);
+  try{
+    for(const dir of ['A/B','node_modules/pkg','.hidden'])await mkdir(path.join(root,dir),{recursive:true});
+    for(const file of ['A/B/needle.txt','node_modules/pkg/needle.js','.hidden/needle.md'])await writeFile(path.join(root,file),'x');
+    const url='/api/search?path='+encodeURIComponent(root)+'&q=needle';
+    const visible=(await app.inject(url)).json();assert.deepEqual(visible.hits.map((row:any)=>row.name),['needle.txt']);
+    const hidden=(await app.inject(url+'&hidden=true')).json();assert.deepEqual(hidden.hits.map((row:any)=>row.name).sort(),['needle.md','needle.txt']);
+    assert.equal((await app.inject('/api/search?q=')).statusCode,400);
+  }finally{await app.close();await rm(root,{recursive:true,force:true});}
+});

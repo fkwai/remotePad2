@@ -7,7 +7,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import WebSocket, { type RawData } from 'ws';
 import { closeSsh as closeSshConnections, connectedHosts as connectedSshHosts, connectSsh, sshProgress, sshSocket as socketFor, parseSsh } from './ssh.ts';
 
-const workerPath = /^\/api\/(?:health|files|file|preview|sessions|codex|navigation)(?:\/|\?|$)/;
+const workerPath = /^\/api\/(?:health|files|file|search|preview|sessions|codex|navigation)(?:\/|\?|$)/;
 const workerSocket = /^\/ws\/(?:terminal|codex)\/[^/?]+$/;
 
 function localBrowser(req: FastifyRequest) {

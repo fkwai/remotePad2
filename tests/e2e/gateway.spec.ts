@@ -20,6 +20,8 @@ test('prefixed assets, local controls, files, opaque previews and terminal stay 
  const frame=page.frameLocator('#editor-content iframe');
  await expect(frame.getByRole('heading')).toHaveText('Gateway preview');
  await expect(frame.locator('img')).toHaveJSProperty('naturalWidth',1);
+ await page.getByRole('searchbox',{name:'Search files'}).fill('README.md');
+ await expect(page.locator('.file-search-hit')).toContainText('README.md');
  await page.locator('.xterm-helper-textarea').focus();
  await page.keyboard.type("printf 'gateway-%s\\n' 'terminal-ok'");await page.keyboard.press('Enter');
  await expect(page.locator('.xterm-screen')).toContainText('gateway-terminal-ok');

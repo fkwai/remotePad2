@@ -1,7 +1,7 @@
 import { localFetch, entryUrl } from './base';
 import { machineKey, profile, sshTarget, workspaceKey } from './connection';
 export interface WindowProfile { id: string; ssh: string; name: string; state: Record<string, string>; updated: number }
-const keys = ['panel-sizes', 'fixed-visibility', 'directory', 'session', 'session.main', 'session.dev', 'session.nightly', 'editor-tabs', 'active-file', 'secondary-file', 'editor-split', 'editor-ratio', 'show-hidden'];
+const keys = ['panel-sizes', 'fixed-visibility', 'directory', 'session', 'session.main', 'session.dev', 'session.nightly', 'editor-tabs', 'active-file', 'secondary-file', 'editor-split', 'editor-ratio', 'show-hidden', 'sidebar-panels'];
 let ready = false, last = '', timer: number | undefined;
 const route = '/api/windows/' + encodeURIComponent(profile);
 export const windowUrl = (id: string, ssh = sshTarget) => {
