@@ -102,7 +102,7 @@ test('drag geometry survives hiding, reload and workspace session switching', as
   await page.getByRole('button', { name: 'RemotePad2', exact: true }).click();
   await expect(page.locator('#version .version-info')).toHaveCount(0);
   await expect(page.locator('#version .popover')).toContainText(os.hostname());
-  await expect(page.locator('#version .popover')).toContainText('sessions');
+  await expect(page.locator('#version .popover > small')).toHaveText(/^\d+ sessions?$/);
   const next = page.context().waitForEvent('page');
   await page.getByRole('button', { name: '+ New', exact: true }).click();
   const other = await next;
