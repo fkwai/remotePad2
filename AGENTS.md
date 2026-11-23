@@ -184,3 +184,8 @@ Terminal-first web workbench, developed in this repository on dev.
   include main/dev/nightly plus revision, preventing identical-code lanes from
   sharing PTYs. Worker health reports its channel. Changing a lane never kills
   another worker. Target project files remain shared, not sandboxed per lane.
+
+- SSH packaging/setup scripts explicitly trap INT/TERM to exit 130/143 before
+  recording EXIT status. Bash 5 can otherwise record zero after Ctrl+C and
+  wrongly enter tunnel health polling. The PTY regression asserts code 130
+  and a usable shell after cancellation; Linux PR CI must pass before merge.

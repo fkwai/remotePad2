@@ -72,6 +72,9 @@ async function connect(input:string,job:{session:Session;dir?:string;cancelled:b
     await writeFile(packScript,`#!/bin/bash
 umask 077
 set -eu
+# Bash 5 may report zero to EXIT after SIGINT unless the signal is handled.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 trap 'code=$?; printf "%s\\n" "$code" > ${displayCommand([packed])}' EXIT
 export COPYFILE_DISABLE=1
 ${displayCommand(['tar','-cf',archive,'-C',root,...packageFiles])}
@@ -141,6 +144,9 @@ ${displayCommand(['tar','-cf',archive,'-C',root,...packageFiles])}
     await writeFile(script,`#!/bin/bash
 umask 077
 set -euo pipefail
+# Bash 5 may report zero to EXIT after SIGINT unless the signal is handled.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 trap 'code=$?; printf "%s\\n" "$code" > ${displayCommand([result])}' EXIT
 ${ssh} < ${displayCommand([archive])} | tee ${displayCommand([output])}
 uid=$(sed -n 's/^REMOTEPAD2_UID=\\([0-9]*\\)$/\\1/p' ${displayCommand([output])} | tail -1)

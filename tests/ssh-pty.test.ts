@@ -50,7 +50,10 @@ exit 42
     await until(()=>current.replay.includes('Test SSH authentication: '));
     current!.process.write('\x03');
     await until(()=>sshProgress('pty-cancel-host').phase==='Failed');
+    assert.match(sshProgress('pty-cancel-host').error!,/code 130/);
     assert.equal(current!.info.alive,true);
+    current!.process.write("printf 'after-cancel-%s\\n' works\r");
+    await until(()=>current.replay.includes('after-cancel-works'));
     connectSsh('pty-disconnect-host',service);
     await until(()=>current.replay.includes('Test SSH authentication: '));
     await disconnectSsh('pty-disconnect-host');
