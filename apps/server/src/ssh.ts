@@ -1,26 +1,27 @@
-import { execFile, spawn, type ChildProcess } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { request } from 'node:http';
-import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
-import { setTimeout as delay } from 'node:timers/promises';
-import { sshDestination } from './ssh-hosts.ts';
-
-const root = fileURLToPath(new URL('../../../', import.meta.url));
-const run = promisify(execFile);
-const common = ['-T', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
-  '-o', 'ConnectTimeout=10', '-o', 'ControlMaster=no', '-o', 'ControlPath=none',
-  '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3'];
-const connections = new Map<string, { socket: string; child: ChildProcess }>();
-const progress = new Map<string, { phase: string; startedAt: number; phaseSince: number; error?: string }>();
-export const sshProgress = (input: string) => progress.get(input);
-function phase(input: string, value: string, error?: string) {
-  const previous = progress.get(input);
-  progress.set(input, { phase: value, startedAt: previous?.startedAt || Date.now(), phaseSince: previous?.phase === value ? previous.phaseSince : Date.now(), ...(error ? { error } : {}) });
-}
-const pending = new Map<string, Promise<void>>();
-
+import {remoteRuntime} from './ssh-runtime.ts';
+import {displayCommand} from './ssh-command.ts';
+import {execFile} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {mkdtemp,readFile,writeFile,stat,rm} from 'node:fs/promises';
+import {request} from 'node:http';
+import {fileURLToPath} from 'node:url';
+import {promisify} from 'node:util';
+import {setTimeout as delay} from 'node:timers/promises';
+import {sshDestination} from './ssh-hosts.ts';
+import type {Session,TerminalService} from './terminal.ts';
+const root=fileURLToPath(new URL('../../../',import.meta.url));
+const run=promisify(execFile);
+const common=['-T','-o','StrictHostKeyChecking=ask','-o','ConnectTimeout=10','-o','ServerAliveInterval=15','-o','ServerAliveCountMax=3'];
+interface Transport {socket:string;control:string;input:string;dir:string;monitor?:NodeJS.Timeout}
+const connections=new Map<string,Transport>();
+const jobs=new Map<string,{session:Session;dir?:string;cancelled:boolean}>();
+const pending=new Map<string,Promise<void>>();
+const disconnects=new Map<string,Promise<void>>();
+const progress=new Map<string,{phase:string;startedAt:number;error?:string}>();
+function phase(input:string,value:string,error?:string){progress.set(input,{phase:value,startedAt:progress.get(input)?.startedAt||Date.now(),...(error?{error}:{})});}
+export const sshProgress=(input:string)=>({...progress.get(input),terminal:jobs.get(input)?.session.info});
+export const sshSocket=(input:string)=>connections.get(input)?.socket;
+export const connectedHosts=()=>[...connections.keys()];
 export function parseSsh(input: string): { options: string[]; host: string } {
   if (typeof input !== 'string' || input.length > 1024 || /[\r\n]/.test(input)) throw new Error('Enter an SSH host or ssh command.');
   const tokens = input.match(/"(?:[^"\\]|\\.)*"|'[^']*'|[^\s]+/g)?.map((x) => x.replace(/^["']|["']$/g, '')) || [];
@@ -37,51 +38,66 @@ export function parseSsh(input: string): { options: string[]; host: string } {
   if (tokens.length !== 1 || !sshDestination.test(tokens[0])) throw new Error('Use a config alias or user@hostname. Remote commands are not accepted here.');
   return { options, host: tokens[0] };
 }
-function execSsh(input: string, command: string, body?: Buffer) {
-  const { options, host } = parseSsh(input);
-  return new Promise<string>((resolve, reject) => {
-    let lines = '';
-    const child = execFile('ssh', [...common, ...options, '-o', 'ClearAllForwardings=yes', '--', host, command],
-      { timeout: 180000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) =>
-        error ? reject(new Error(stderr.replace(/^REMOTEPAD2_PHASE=.*$/gm, '').trim().slice(-1800) || error.message)) : resolve(stdout.trim()));
-    child.stderr?.on('data', (chunk) => {
-      lines += chunk.toString();
-      const complete = lines.split('\n'); lines = complete.pop() || '';
-      for (const line of complete) if (/^REMOTEPAD2_PHASE=/.test(line)) phase(input, line.slice('REMOTEPAD2_PHASE='.length));
-    });
-    child.stdin?.on('error', () => {});
-    child.stdin?.end(body);
-  });
-}
-export const sshSocket = (host: string) => connections.get(host)?.socket;
-export const connectedHosts = () => [...connections.keys()];
 export async function healthy(socketPath: string) {
   return new Promise<boolean>((resolve) => {
     const req = request({ socketPath, path: '/api/health', timeout: 5000 }, (res) => { res.resume(); resolve(res.statusCode === 200); });
     req.on('timeout', () => req.destroy()); req.on('error', () => resolve(false)); req.end();
   });
 }
-async function connect(input: string) {
-  const { options, host } = parseSsh(input);
-  phase(input, 'Packaging backend');
-  const { stdout: bundle } = await run('tar', ['-cf', '-', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'tsconfig.json',
-    'apps/server/src', 'apps/server/scripts', 'apps/server/package.json', 'apps/server/tsconfig.json',
-    'packages/protocol'], { cwd: root, encoding: 'buffer', maxBuffer: 32 * 1024 * 1024, env: { ...process.env, COPYFILE_DISABLE: '1' } });
-  const revision = createHash('sha256').update(bundle).digest('hex').slice(0, 20);
-  const install = `"$HOME/.remotepad2/backend/${revision}"`;
-  // A versioned backend survives the transport. Reconnecting reuses its PTYs.
-  phase(input, 'SSH login');
-  const output = await execSsh(input, `
-    set -eu
+async function stopTransport(transport:Transport,strict=false){
+  const {options,host}=parseSsh(transport.input);
+  try {await run('ssh',[...options,'-S',transport.control,'-O','exit','--',host],{timeout:3000});}
+  catch(error){if(strict && await healthy(transport.socket))throw new Error('Could not stop SSH tunnel. Retry Disconnect.');}
+  clearInterval(transport.monitor);
+  await rm(transport.dir,{recursive:true,force:true});
+}
+async function waitCommand(result:string,job:{session:Session;cancelled:boolean}){
+  const deadline=Date.now()+180000;
+  for(;;){
+    if(job.cancelled || !job.session.info.alive)throw new Error('Connection terminal was closed.');
+    const code=await readFile(result,'utf8').catch(()=>null);
+    if(code!==null){if(code.trim()!=='0')throw new Error('SSH setup command exited with code '+code.trim()+'. See terminal output.');return;}
+    if(Date.now()>deadline){job.session.process.write('\x03');throw new Error('SSH setup timed out. See terminal output.');}
+    await delay(200);
+  }
+}
+async function connect(input:string,job:{session:Session;dir?:string;cancelled:boolean}){
+  const {options,host}=parseSsh(input);
+  let transport:Transport|undefined;
+  try {
+    phase(input,'Packaging backend');
+    const dir=await mkdtemp('/tmp/rp2-prepare-');job.dir=dir;
+    const archive=dir+'/backend.tar',packed=dir+'/packed',packScript=dir+'/package.sh';
+    const packageFiles=['package.json','pnpm-lock.yaml','pnpm-workspace.yaml','tsconfig.json','apps/server/src','apps/server/scripts','apps/server/package.json','apps/server/tsconfig.json','packages/protocol'];
+    await writeFile(packScript,`#!/bin/bash
+umask 077
+set -eu
+# Bash 5 may report zero to EXIT after SIGINT unless the signal is handled.
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'code=$?; printf "%s\\n" "$code" > ${displayCommand([packed])}' EXIT
+export COPYFILE_DISABLE=1
+${displayCommand(['tar','-cf',archive,'-C',root,...packageFiles])}
+`,{mode:0o700});
+    if(job.cancelled || !job.session.info.alive)throw new Error('Connection terminal was closed.');
+    job.session.process.write(displayCommand(['/bin/bash','-x',packScript])+'\r');
+    await waitCommand(packed,job);
+    if((await stat(archive)).size>32*1024*1024)throw new Error('Backend bundle exceeds 32 MB.');
+    const bundle=await readFile(archive);
+    const revision=createHash('sha256').update(bundle).digest('hex').slice(0,20);
+    const runtime=remoteRuntime(revision);
+    const install=`"$HOME/${runtime.install}"`;
+    const bootstrap=`
+    set -eux
     umask 077
     echo REMOTEPAD2_PHASE=Checking\ remote\ backend >&2
     export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:/opt/homebrew/bin:/usr/local/bin:$PATH"
     command -v node >/dev/null || { echo 'Node.js 22+ is required in non-interactive SSH PATH.' >&2; exit 1; }
     node -e 'if(Number(process.versions.node.split(".")[0])<22)process.exit(1)' || { echo 'Node.js 22+ is required.' >&2; exit 1; }
-    mkdir -p "$HOME/.remotepad2/backend"
+    mkdir -p "$HOME/.remotepad2/backend/${runtime.channel}"
     if ! test -f ${install}/.ready; then
       echo REMOTEPAD2_PHASE=Installing\ backend\ dependencies >&2
-      stage=$(mktemp -d "$HOME/.remotepad2/backend/.install.XXXXXXXX")
+      stage=$(mktemp -d "$HOME/.remotepad2/backend/${runtime.channel}/.install.XXXXXXXX")
       trap 'rm -rf "$stage"' EXIT
       tar -xf - -C "$stage"
       pnpm_version=$(node -e 'const p=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")).packageManager;if(!/^pnpm@[0-9]+[.][0-9]+[.][0-9]+$/.test(p))throw Error("Invalid pnpm version");console.log(p.slice(5))' "$stage/package.json")
@@ -103,7 +119,8 @@ async function connect(input: string) {
       cat >/dev/null
     fi
     echo REMOTEPAD2_PHASE=Starting\ remote\ backend >&2
-    socketdir="/tmp/rp2-$(id -u)-${revision}"
+    export REMOTEPAD2_CHANNEL=${runtime.channel}
+    socketdir="${runtime.socketDirectory}"
     mkdir -p "$socketdir"
     chmod 700 "$socketdir"
     export REMOTEPAD2_WORKER_SOCKET="$socketdir/api.sock"
@@ -116,36 +133,85 @@ async function connect(input: string) {
       fi
     fi
     printf '\\nREMOTEPAD2_UID=%s\\n' "$(id -u)"
-  `, bundle);
-  const dir = await mkdtemp('/tmp/rp2-ssh-');
-  const socket = dir + '/api.sock';
-  const remoteSocket = `/tmp/rp2-$(id -u)-${revision}/api.sock`;
-  // Read the UID from the same bootstrap connection, avoiding another SSH handshake.
-  const uid = output.match(/(?:^|\n)REMOTEPAD2_UID=(\d+)(?:\n|$)/)?.[1];
-  if (!uid) throw new Error('Could not resolve remote user.');
-  const remote = remoteSocket.replace('$(id -u)', uid);
-  phase(input, 'Opening SSH tunnel');
-  const child = spawn('ssh', [...common, ...options, '-N', '-o', 'ExitOnForwardFailure=yes', '-L', `${socket}:${remote}`, '--', host], { stdio: ['ignore', 'ignore', 'pipe'] });
-  let failure = '', ended = false;
-  child.stderr.on('data', (data) => { failure = (failure + data).slice(-1500); });
-  child.on('error', (error) => { failure = error.message; ended = true; });
-  child.once('close', () => { ended = true; if (connections.get(input)?.child === child) connections.delete(input); void rm(dir, { recursive: true, force: true }); });
-  const deadline = Date.now() + 30000;
-  while (Date.now() < deadline && !ended) {
-    if (await healthy(socket)) { connections.set(input, { socket, child }); phase(input, 'Connected'); return; }
-    phase(input, 'Waiting for tunnel health');
-    await delay(250);
-  }
-  child.kill();
-  throw new Error(failure.trim() || 'SSH tunnel health check timed out after 30 seconds. The remote backend may still be running; retry the connection.');
+`;
+    const tunnel=await mkdtemp('/tmp/rp2-ssh-');
+    transport={input,dir:tunnel,socket:tunnel+'/api.sock',control:tunnel+'/control.sock'};
+    const output=dir+'/bootstrap.out',result=dir+'/result',script=dir+'/connect.sh';
+    const ssh=displayCommand(['ssh',...common,...options,'-o','ControlMaster=no','-o','ControlPath=none','-o','ClearAllForwardings=yes','--',host,bootstrap]);
+    const master=displayCommand(['ssh',...common,...options,'-M','-S',transport.control,'-f','-N','-o','ExitOnForwardFailure=yes','-L']);
+    // bash -x runs in the ordinary PTY: commands, raw output and /dev/tty auth
+    // all use the same interactive terminal. The authenticated master detaches.
+    await writeFile(script,`#!/bin/bash
+umask 077
+set -euo pipefail
+# Bash 5 may report zero to EXIT after SIGINT unless the signal is handled.
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'code=$?; printf "%s\\n" "$code" > ${displayCommand([result])}' EXIT
+${ssh} < ${displayCommand([archive])} | tee ${displayCommand([output])}
+uid=$(sed -n 's/^REMOTEPAD2_UID=\\([0-9]*\\)$/\\1/p' ${displayCommand([output])} | tail -1)
+test -n "$uid"
+${master} "${transport.socket}:${runtime.socketDirectory.replace('$(id -u)','$uid')}/api.sock" -- ${displayCommand([host])}
+`,{mode:0o700});
+    if(job.cancelled || !job.session.info.alive)throw new Error('Connection terminal was closed.');
+    phase(input,'SSH login');
+    let lines='';
+    const watcher=job.session.process.onData(data=>{
+      lines+=data;const complete=lines.split('\n');lines=complete.pop()?.slice(-4096)||'';
+      for(const line of complete){const match=line.match(/^REMOTEPAD2_PHASE=([^\r\n]+)/);if(match)phase(input,match[1]);}
+    });
+    job.session.process.write(displayCommand(['/bin/bash','-x',script])+'\r');
+    try {await waitCommand(result,job);} finally {watcher.dispose();}
+    phase(input,'Waiting for tunnel health');
+    const healthDeadline=Date.now()+30000;
+    while(Date.now()<healthDeadline){
+      if(job.cancelled)throw new Error('Connection cancelled.');
+      if(await healthy(transport.socket)){
+        const ready=transport;connections.set(input,ready);phase(input,'Connected');
+        let checking=false,failures=0;
+        ready.monitor=setInterval(()=>{
+          if(checking)return;checking=true;
+          void healthy(ready.socket).then(ok=>{failures=ok?0:failures+1;if(failures>=3 && connections.get(input)===ready){connections.delete(input);phase(input,'Disconnected');void stopTransport(ready);}}).finally(()=>{checking=false;});
+        },15000);ready.monitor.unref();
+        return;
+      }
+      await delay(250);
+    }
+    throw new Error('SSH tunnel health check timed out. See terminal output.');
+  } catch(error){if(transport)await stopTransport(transport);if(!job.session.info.alive && job.dir)await rm(job.dir,{recursive:true,force:true});throw error;}
 }
-export function connectSsh(input: string) {
+export function connectSsh(input:string,terminals:TerminalService){
   parseSsh(input);
-  if (connections.has(input)) return Promise.resolve();
-  if (pending.has(input)) return pending.get(input)!;
-  progress.delete(input);
-  const task = connect(input).catch((error) => { phase(input, 'Failed', error.message); throw error; }).finally(() => pending.delete(input));
-  pending.set(input, task);
-  return task;
+  if(disconnects.has(input))throw new Error('SSH is disconnecting. Retry when finished.');
+  if(connections.has(input))return {connected:true,terminal:jobs.get(input)?.session.info};
+  if(pending.has(input))return {connected:false,terminal:jobs.get(input)!.session.info};
+  const session=terminals.create({name:'SSH · '+input,kind:'ssh-connect',sshTarget:input});
+  const job={session,cancelled:false,dir:undefined as string|undefined};jobs.set(input,job);
+  progress.delete(input);phase(input,'Preparing connection terminal');
+  session.process.onExit(()=>{if(job.dir)void rm(job.dir,{recursive:true,force:true});});
+  const task=connect(input,job).catch(error=>phase(input,'Failed',error.message)).finally(()=>pending.delete(input));
+  pending.set(input,task);
+  return {connected:false,terminal:session.info};
 }
-export function closeSsh() { for (const connection of connections.values()) connection.child.kill(); }
+export function disconnectSsh(input:string){
+  parseSsh(input);
+  if(disconnects.has(input))return disconnects.get(input)!;
+  const task=(async()=>{
+    phase(input,'Disconnecting');
+    const job=jobs.get(input),preparing=pending.get(input);
+    if(preparing && job){job.cancelled=true;if(job.session.info.alive)job.session.process.write('\x03');await preparing;}
+    const transport=connections.get(input);
+    try {
+      if(transport){await stopTransport(transport,true);if(connections.get(input)===transport)connections.delete(input);}
+      phase(input,'Disconnected');
+    } catch(error){phase(input,'Connected',(error as Error).message);throw error;}
+  })().finally(()=>disconnects.delete(input));
+  disconnects.set(input,task);return task;
+}
+export async function closeSsh(){
+  for(const [input,job] of jobs){job.cancelled=true;if(pending.has(input)&&job.session.info.alive)job.session.process.write('\x03');}
+  await Promise.all([...pending.values()]);
+  await Promise.allSettled([...disconnects.values()]);
+  const transports=[...connections.values()];connections.clear();
+  await Promise.all(transports.map(transport=>stopTransport(transport)));
+}

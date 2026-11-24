@@ -1,4 +1,5 @@
 import os from 'node:os';
+import { registerSearch } from './search.ts';
 import { registerWindows } from './windows.ts';
 import { registerVersion } from './version.ts';
 import { previewKey, previewRequest } from './preview-access.ts';
@@ -35,11 +36,12 @@ app.addHook('onRequest', async (request, reply) => {
 app.get('/api/preview-key', async () => ({ key: previewKey }));
 if (!workerSocket) { registerVersion(app); registerWindows(app); }
 app.get('/api/health', async () => ({ ok: true, hostname: os.hostname(), pid: process.pid, channel: process.env.REMOTEPAD2_CHANNEL || null }));
-await registerTerminal(app);
+const terminals = await registerTerminal(app);
 await registerCodexApp(app);
 await registerFiles(app);
+registerSearch(app);
 await registerNavigation(app);
-if (!workerSocket) await registerSshRoutes(app);
+if (!workerSocket) await registerSshRoutes(app,os.homedir(),terminals);
 const web = fileURLToPath(new URL('../../web/dist/', import.meta.url));
 if (!workerSocket && existsSync(path.join(web, 'index.html'))) await app.register(staticFiles, { root: web });
 if (workerSocket) {

@@ -30,8 +30,10 @@ async function prepare(channel: Channel) {
   }
   const checkout = path.join(checkoutDir, channel);
   await mkdir(checkoutDir, { recursive: true });
-  await run('git', ['-C', repo, 'fetch', 'origin', channel], { timeout: 60000 });
-  const sha = (await run('git', ['-C', repo, 'rev-parse', 'FETCH_HEAD'])).stdout.trim();
+  const ref = 'refs/remotes/origin/' + channel;
+  await run('git', ['-C', repo, 'fetch', 'origin', 'refs/heads/' + channel + ':' + ref], { timeout: 60000 });
+  // Per-channel refs avoid races when two lane starts fetch concurrently.
+  const sha = (await run('git', ['-C', repo, 'rev-parse', ref])).stdout.trim();
   try { await readFile(path.join(checkout, '.git')); }
   catch { await run('git', ['-C', repo, 'worktree', 'add', '--detach', checkout, sha], { timeout: 15000 }); return checkout; }
   const changes = (await run('git', ['-C', checkout, 'status', '--porcelain'])).stdout.trim();

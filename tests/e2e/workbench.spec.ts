@@ -100,7 +100,9 @@ test('drag geometry survives hiding, reload and workspace session switching', as
   await layoutCheck(page, 'Terminal', true);
   expect(await page.locator('#editor').evaluate(el => el.getBoundingClientRect().height)).toBeCloseTo(height, 0);
   await page.getByRole('button', { name: 'RemotePad2', exact: true }).click();
-  await expect(page.locator('.version-info')).toContainText(/@[a-f0-9]{7,}/);
+  await expect(page.locator('#version .version-info')).toHaveCount(0);
+  await expect(page.locator('#version .popover')).toContainText(os.hostname());
+  await expect(page.locator('#version .popover > small')).toHaveText(/^\d+ sessions?$/);
   const next = page.context().waitForEvent('page');
   await page.getByRole('button', { name: '+ New', exact: true }).click();
   const other = await next;
@@ -166,23 +168,19 @@ test('editor uses bottom source toggle, menu save and shared editable split pane
   await expect(page.frameLocator('#editor-content iframe').getByRole('heading')).toHaveText('Edited on right');
 });
 
-test('SSH progress and failure stay visible while aliases remain expanded', async ({page}) => {
-  let release:()=>void;
-  const pending=new Promise<void>(resolve=>release=resolve);
-  await page.route('**/api/ssh/test-cloud/status', route=>route.fulfill({json:{phase:'Installing backend dependencies',startedAt:Date.now()-3000}}));
-  await page.route('**/api/ssh/connect',async route=>{await pending; await route.fulfill({status:502,contentType:'application/json',body:JSON.stringify({error:'Test forwarding failure'})});});
-  await page.goto('/');
-  await expect(page.locator('#host > button')).not.toHaveText('Local machine');
-  await page.locator('#host > button').click();
-  await page.locator('#host summary').click();
+test('SSH progress and failure stay visible while aliases remain expanded', async ({page,request}) => {
+  let failed=false;
+  const terminal={...(await(await request.post('/api/sessions')).json()),kind:'ssh-connect',name:'SSH · test-cloud',sshTarget:'test-cloud'};
+  await page.route('**/api/ssh/test-cloud/status*',route=>route.fulfill({json:{terminal,phase:failed?'Failed':'Installing backend dependencies',startedAt:Date.now()-3000,...(failed?{error:'Test forwarding failure'}:{})}}));
+  await page.route('**/api/ssh/connect',route=>route.fulfill({json:{terminal,connected:false}}));
+  await page.goto('/');await page.locator('#host > button').click();await page.locator('#host summary').click();
   await page.getByRole('button',{name:'test-cloud',exact:true}).click();
   const progress=page.locator('.connection-progress');
-  await expect(progress).toBeInViewport(); await expect(progress).toContainText('Connecting to test-cloud');
-  await expect(page.locator('#status')).toContainText('Connecting to test-cloud');
-  await expect(progress).toContainText('Installing backend dependencies');
+  await expect(progress).toBeInViewport();await expect(progress).toContainText('Installing backend dependencies');
   await expect(progress).toContainText('s');
-  release!();
-  await expect(progress).toContainText('Test forwarding failure');
+  await expect(page.locator('#terminal-tabs .tab.active')).toContainText('SSH · test-cloud');
+  await expect(page.locator('.terminal-body:not([hidden]) .xterm')).toBeVisible();
+  failed=true;await expect(progress).toContainText('Test forwarding failure');
   await expect(page.getByRole('button',{name:'test-cloud',exact:true})).toBeEnabled();
 });
 
@@ -215,4 +213,190 @@ test('SSH target stays in header after local-host discovery; layout/reset/refres
   await expect(page.locator('#host > button')).toHaveText('cloudKuai');
   await page.locator('#host > button').click();
   await expect(page.getByRole('button',{name:'Switch to local',exact:true})).toBeVisible();
+});
+
+test('nested expanded folders freeze without selecting a leaf, with no gaps or sibling bleed', async ({page}) => {
+  const a=path.join(fixtures,'sticky-A'), b=path.join(a,'sticky-B'), c=path.join(fixtures,'sticky-C');
+  await mkdir(b,{recursive:true});await mkdir(c,{recursive:true});
+  for(let i=0;i<60;i++){await writeFile(path.join(b,'file-'+i+'.txt'),'x');await writeFile(path.join(c,'sibling-'+i+'.txt'),'x');}
+  await browse(page);
+  await row(page,'sticky-A').locator('.tree-name').click();
+  await row(page,'sticky-B').locator('.tree-name').click();
+  await expect(row(page,'file-0.txt')).toHaveCount(1);
+  await row(page,'sticky-C').locator('.tree-name').click();
+  const tree=page.locator('.file-tree');
+  await tree.evaluate(el=>{const a=Array.from(el.querySelectorAll<HTMLElement>('.tree-row')).find(r=>r.dataset.path?.endsWith('/sticky-A'))!;el.scrollTop+=a.closest('.tree-branch')!.getBoundingClientRect().top-el.getBoundingClientRect().top+300;});
+  const rootRow=page.locator('.tree-row').filter({has:page.locator('.tree-name',{hasText:/^fixtures$/})});
+  const up=(await tree.locator(':scope > .tree-parent').boundingBox())!, rootBox=(await rootRow.boundingBox())!, aBox=(await row(page,'sticky-A').boundingBox())!, bBox=(await row(page,'sticky-B').boundingBox())!;
+  const treeBox=(await tree.boundingBox())!;
+  expect(Math.abs(up.y-treeBox.y-1)).toBeLessThan(1.5);
+  expect(Math.abs(rootBox.y-up.y-up.height)).toBeLessThan(1.5);
+  expect(Math.abs(aBox.y-rootBox.y-rootBox.height)).toBeLessThan(1.5);
+  expect(Math.abs(bBox.y-aBox.y-aBox.height)).toBeLessThan(1.5);
+  await page.screenshot({path:path.join(root,'tree-nested.png')});
+  await tree.evaluate(el=>{const c=Array.from(el.querySelectorAll<HTMLElement>('.tree-row')).find(r=>r.dataset.path?.endsWith('/sticky-C'))!;el.scrollTop+=c.closest('.tree-branch')!.getBoundingClientRect().top-el.getBoundingClientRect().top+200;});
+  const nextRoot=(await rootRow.boundingBox())!, nextC=(await row(page,'sticky-C').boundingBox())!;
+  expect(Math.abs(nextC.y-nextRoot.y-nextRoot.height)).toBeLessThan(1.5);
+  expect((await row(page,'sticky-B').boundingBox())!.y+28).toBeLessThanOrEqual(nextRoot.y+nextRoot.height+1);
+});
+
+test('search Favorites and Repos are independent docked tools and remember visibility',async({page})=>{
+  await browse(page);
+  const toolbar=page.getByRole('toolbar',{name:'Files tools'});
+  for(const name of ['Search','Favorites','Repos']){
+    const control=toolbar.getByRole('button',{name,exact:true});
+    await expect(control).toHaveText('');await expect(control.locator('svg')).toBeVisible();
+    await expect(control).toHaveAttribute('aria-pressed','true');
+  }
+  await expect(page.getByLabel('Favorites panel',{exact:true})).toBeVisible();
+  await expect(page.getByLabel('Repos panel',{exact:true})).toBeVisible();
+  await page.getByRole('searchbox',{name:'Search files'}).fill('note.py');
+  await expect(page.locator('.file-search-hit')).toContainText('note.py');
+  await expect(page.getByLabel('Favorites panel',{exact:true})).toBeVisible();
+  await expect(page.getByLabel('Repos panel',{exact:true})).toBeVisible();
+  await page.locator('.file-search-hit').click();
+  await expect(page.getByRole('textbox',{name:'File content'})).toHaveValue('print("hello")\n');
+  await toolbar.getByRole('button',{name:'Favorites',exact:true}).click();
+  await expect(page.getByLabel('Favorites panel',{exact:true})).toBeHidden();
+  await expect(page.getByLabel('Repos panel',{exact:true})).toBeVisible();
+  await page.reload();
+  await expect(toolbar.getByRole('button',{name:'Favorites',exact:true})).toHaveAttribute('aria-pressed','false');
+  await expect(page.getByRole('searchbox',{name:'Search files'})).toBeVisible();
+  await expect(page.getByLabel('Repos panel',{exact:true})).toBeVisible();
+});
+
+test('expansion responds before a slow listing and double-click shares the pending request',async({page})=>{
+  const folder=path.join(fixtures,'latency-folder');await mkdir(folder,{recursive:true});await writeFile(path.join(folder,'ready.txt'),'ready');
+  await browse(page);
+  let requests=0,release!:()=>void;const pending=new Promise<void>(resolve=>release=resolve);
+  await page.route('**/api/files?path=*',async route=>{
+    if(new URL(route.request().url()).searchParams.get('path')===folder){requests++;await pending;}
+    await route.continue();
+  });
+  const directory=row(page,'latency-folder');
+  await directory.locator('.tree-name').dblclick();
+  await expect(directory).toHaveAttribute('aria-expanded','true');
+  await expect.poll(()=>requests).toBe(1);
+  release();
+  await expect(row(page,'ready.txt')).toBeVisible();
+});
+
+
+test('blocked new tab exposes a remote link on the real terminal tab and retains the original shell', async ({page,request}) => {
+  const terminal={...(await(await request.post('/api/sessions')).json()),kind:'ssh-connect',name:'SSH · test-cloud',sshTarget:'test-cloud'};
+  await page.addInitScript(()=>{window.open=()=>null;});
+  await page.route('**/api/ssh/connect',route=>route.fulfill({json:{connected:true,terminal}}));
+  await page.goto('/?w=connection-blocked');await expect(page.locator('.xterm')).toBeVisible();
+  const shell=await page.evaluate(()=>localStorage.getItem('rp2.window.connection-blocked.session'));
+  await page.locator('#host > button').click();await page.locator('#host summary').click();
+  await page.getByRole('button',{name:'test-cloud',exact:true}).click();
+  await expect(page.locator('#terminal-tabs').getByRole('link',{name:'Open remote workspace',exact:true})).toHaveAttribute('href',/w=connection-blocked&ssh=test-cloud/);
+  expect(new URL(page.url()).searchParams.has('ssh')).toBe(false);await page.keyboard.press('Escape');
+  const body=page.locator('.terminal-body:not([hidden])');
+  await body.locator('.xterm-helper-textarea').focus();await page.keyboard.type("printf 'ssh-terminal-%s\\n' works");await page.keyboard.press('Enter');
+  await expect(body.locator('.xterm-screen')).toContainText('ssh-terminal-works');
+  await page.locator('#terminal-tabs .tab.active').getByRole('button',{name:'Close tab and end session',exact:true}).click();
+  await expect(page.locator('#terminal-tabs .tab').filter({hasText:'SSH · test-cloud'})).toHaveCount(0);
+  await expect(page.locator('.terminal-body:not([hidden]) .xterm')).toBeVisible();
+  expect((await(await request.get('/api/sessions')).json()).sessions.some((s:any)=>s.id===terminal.id)).toBe(false);
+  expect(await page.evaluate(()=>localStorage.getItem('rp2.window.connection-blocked.session'))).toBe(shell);
+});
+
+test('SSH manager saves destinations, restores them and removes only the saved entry',async({page,request})=>{
+  const command='ssh -J jump user@saved-cloud';
+  const existing=(await(await request.get('/api/ssh/hosts')).json()).saved||[];
+  for(const machine of existing.filter((x:any)=>x.command===command))await request.delete('/api/ssh/machines/'+machine.id);
+  await page.goto('/?w=ssh-manager');await expect(page.locator('.xterm')).toBeVisible();
+  await page.locator('#host > button').click();await page.locator('#host summary').click();
+  await page.getByRole('textbox',{name:'SSH command',exact:true}).fill(command);
+  await page.getByRole('textbox',{name:'Machine name',exact:true}).fill('Work cloud');
+  await page.getByRole('button',{name:'Save machine',exact:true}).click();
+  const row=page.locator('.ssh-machine').filter({has:page.locator('strong',{hasText:'Work cloud'})});
+  await expect(row).toContainText('Not connected');await expect(row).toContainText(command);
+  await expect(page.locator('#host details')).not.toHaveAttribute('open','');
+  await page.reload();await page.locator('#host > button').click();
+  await expect(row.getByRole('button',{name:'Connect',exact:true})).toBeVisible();
+  let release!:()=>void;const pending=new Promise<void>(resolve=>release=resolve);
+  await page.route('**/api/ssh/connect',async route=>{await pending;await route.fulfill({status:502,json:{error:'Test machine unavailable'}});});
+  await row.getByRole('button',{name:'Connect',exact:true}).click();
+  await expect(row).toContainText('Connecting…');release();
+  await expect(page.locator('.connection-progress')).toContainText('Test machine unavailable');
+  await expect(row).toContainText('Not connected');await expect(row.getByRole('button',{name:'Connect',exact:true})).toBeEnabled();
+  await row.getByRole('button',{name:'Remove saved machine Work cloud',exact:true}).click();
+  await expect(row).toHaveCount(0);
+  await page.locator('#host summary').click();
+  await expect(page.getByRole('button',{name:'test-cloud',exact:true})).toBeVisible();
+  await page.reload();await page.locator('#host > button').click();await expect(row).toHaveCount(0);
+});
+
+test('SSH manager refreshes connection state and opens an already connected machine',async({page,request,context})=>{
+  const command='user@connected-cloud';
+  const saved=(await(await request.post('/api/ssh/machines',{data:{command,name:'Connected cloud'}})).json());
+  let connected=false,connectCalls=0;
+  await page.route('**/api/ssh/hosts',async route=>{
+    const response=await route.fetch();const data=await response.json();data.connected=connected?[command]:[];
+    await route.fulfill({json:data});
+  });
+  await page.route('**/api/ssh/connect',route=>{connectCalls++;return route.fulfill({json:{connected:true}});});
+  await page.goto('/?w=connected-menu');await expect(page.locator('.xterm')).toBeVisible();await page.locator('#host > button').click();
+  const row=page.locator('.ssh-machine').filter({has:page.locator('strong',{hasText:'Connected cloud'})});
+  await expect(row).toContainText('Not connected');connected=true;
+  await page.getByRole('button',{name:'Refresh SSH connections',exact:true}).click();
+  await expect(row).toContainText('Connected');await expect(row.getByRole('button',{name:'Open',exact:true})).toBeVisible();
+  await page.screenshot({path:path.join(root,'ssh-manager.png')});
+  const next=context.waitForEvent('page');await row.getByRole('button',{name:'Open',exact:true}).click();
+  const remote=await next;await expect(remote).toHaveURL(/w=connected-menu&ssh=user%40connected-cloud/);await remote.close();
+  expect(connectCalls).toBe(0);
+  await page.locator('#host > button').click();
+  let release!:()=>void;const pending=new Promise<void>(resolve=>release=resolve);
+  await page.route('**/api/ssh/disconnect',async route=>{
+    expect(route.request().postDataJSON()).toEqual({host:command});await pending;connected=false;await route.fulfill({json:{connected:false}});
+  });
+  const disconnect=row.getByRole('button',{name:'Disconnect',exact:true});
+  await expect(disconnect).toHaveText('');await expect(disconnect.locator('svg')).toBeVisible();
+  await disconnect.click();await expect(row).toContainText('Disconnecting…');release();
+  await expect(row).toContainText('Not connected');await expect(row.getByRole('button',{name:'Connect',exact:true})).toHaveText('');
+  expect((await(await request.get('/api/ssh/hosts')).json()).saved.some((machine:any)=>machine.id===saved.id)).toBe(true);
+  connected=true;await page.getByRole('button',{name:'Refresh SSH connections',exact:true}).click();
+  await expect(row.getByRole('button',{name:'Disconnect',exact:true})).toBeVisible();
+  await page.route('**/api/ssh/disconnect',route=>route.fulfill({status:502,json:{error:'Test disconnect failed'}}));
+  await row.getByRole('button',{name:'Disconnect',exact:true}).click();
+  await expect(page.getByRole('alert')).toContainText('Test disconnect failed');
+  await expect(row.getByRole('button',{name:'Disconnect',exact:true})).toBeEnabled();
+  await row.getByRole('button',{name:'Remove saved machine Connected cloud',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Remove saved machine Connected cloud',exact:true})).toHaveCount(0);
+  await expect(page.locator('.ssh-machine').filter({hasText:command}).getByRole('button',{name:'Open',exact:true})).toBeVisible();
+  await request.delete('/api/ssh/machines/'+saved.id);
+});
+
+
+test('SSH config aliases can be saved and removed without changing config',async({page,request})=>{
+  const entries=(await(await request.get('/api/ssh/hosts')).json()).saved||[];
+  for(const machine of entries.filter((x:any)=>x.command==='test-cloud'))await request.delete('/api/ssh/machines/'+machine.id);
+  await page.goto('/');await page.locator('#host > button').click();await page.locator('#host summary').click();
+  await page.getByRole('button',{name:'Save test-cloud',exact:true}).click();
+  const row=page.locator('.ssh-machine').filter({has:page.locator('strong',{hasText:/^test-cloud$/})});
+  await expect(row).toContainText('Not connected');
+  await expect(page.getByRole('button',{name:'Saved test-cloud',exact:true})).toBeDisabled();
+  await row.getByRole('button',{name:'Remove saved machine test-cloud',exact:true}).click();
+  await expect(row).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'test-cloud',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Save test-cloud',exact:true})).toBeEnabled();
+});
+
+
+test('SSH favorite icons stay clickable beside scrollbars and long aliases',async({page})=>{
+  const aliases=Array.from({length:35},(_,i)=>'cloud-'+i+'-'+('long-host-name-'.repeat(12)));
+  await page.route('**/api/ssh/hosts',route=>route.fulfill({json:{local:{hostname:'test-local',user:'test',platform:'test',arch:'test',homedir:fixtures},connected:[],saved:[],hosts:aliases}}));
+  await page.goto('/');await page.locator('#host > button').click();await page.locator('#host summary').click();
+  const list=page.locator('.ssh-aliases');
+  expect(await list.evaluate(el=>el.scrollHeight>el.clientHeight)).toBe(true);
+  for(const alias of [aliases[0],aliases[17],aliases[34]]){
+    const pin=page.getByRole('button',{name:'Save '+alias,exact:true});await pin.scrollIntoViewIfNeeded();
+    const bounds=(await pin.boundingBox())!,scroll=(await list.boundingBox())!;
+    expect(bounds.width).toBeGreaterThanOrEqual(27);expect(scroll.x+scroll.width-bounds.x-bounds.width).toBeGreaterThanOrEqual(10);
+    expect(await pin.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})).toBe(true);
+    await pin.click({trial:true});
+  }
+  await page.screenshot({path:path.join(root,'ssh-icons-scrollbar.png')});
 });

@@ -20,6 +20,8 @@ test('prefixed assets, local controls, files, opaque previews and terminal stay 
  const frame=page.frameLocator('#editor-content iframe');
  await expect(frame.getByRole('heading')).toHaveText('Gateway preview');
  await expect(frame.locator('img')).toHaveJSProperty('naturalWidth',1);
+ await page.getByRole('searchbox',{name:'Search files'}).fill('README.md');
+ await expect(page.locator('.file-search-hit')).toContainText('README.md');
  await page.locator('.xterm-helper-textarea').focus();
  await page.keyboard.type("printf 'gateway-%s\\n' 'terminal-ok'");await page.keyboard.press('Enter');
  await expect(page.locator('.xterm-screen')).toContainText('gateway-terminal-ok');
@@ -33,7 +35,17 @@ test('version Switch preserves window and shell processes across branch instance
  const devPid=(await(await request.get('/dev/api/health')).json()).pid;
  const mainPid=(await(await request.get('/main/api/health')).json()).pid;
  expect(devPid).not.toBe(mainPid);
+ await request.put('/dev/api/windows/remote-session',{data:{ssh:'cloudKuai',name:'Cloud work',state:{}}});
  await page.getByRole('button',{name:'RemotePad2',exact:true}).click();
+ await expect(page.locator('#version .workspace-row').filter({hasText:'Cloud work'})).toContainText('cloudKuai');
+ await expect(page.locator('#version .version-branch-row')).toHaveCount(0);
+ await expect(page.locator('#version .version-info')).toHaveCount(0);
+ await expect(page.locator('#version .popover')).toContainText('Sessions');
+ await page.keyboard.press('Escape');
+ await page.getByRole('button',{name:'Switch version',exact:true}).click();
+ await expect(page.locator('#channel > button')).toHaveText('dev');
+ await expect(page.locator('#channel .version-branch-row')).toHaveCount(3);
+ await page.screenshot({path:path.join(root,'version-menu.png')});
  const row=page.locator('.version-branch-row').filter({has:page.locator('span',{hasText:/^main$/})});
  await row.getByRole('button',{name:'Switch',exact:true}).click();
  await expect(page).toHaveURL(/\/main\/\?w=lane-switch/);
@@ -43,4 +55,33 @@ test('version Switch preserves window and shell processes across branch instance
  await page.goto('/dev/?w=lane-switch');
  await expect(page.locator('.xterm')).toBeVisible();
  expect(await page.evaluate(()=>localStorage.getItem('rp2.window.lane-switch.session.dev'))).toBe(devSession);
+});
+
+
+test('SSH from a remote workspace executes in a local terminal and opens the same lane',async({page,context,request})=>{
+ let complete=false;
+ const terminal={...(await(await request.post('/dev/api/sessions')).json()),kind:'ssh-connect',name:'SSH · test-cloud',sshTarget:'test-cloud'};
+ const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+ await context.route('**/dev/api/ssh/hosts',route=>route.fulfill({json:{local:{hostname:'local-test',user:'test',platform:'test',arch:'test',homedir:fixtures},hosts:['test-cloud'],connected:[]}}));
+ await context.route('**/dev/api/ssh/test-cloud/status*',route=>route.fulfill({json:{connected:complete,phase:complete?'Connected':'SSH login',terminal}}));
+ await context.route('**/dev/api/ssh/connect',route=>route.fulfill({json:{connected:false,terminal}}));
+ await context.route(/\/dev\/api\/ssh\/(?:test-cloud|initial-cloud)\/proxy\//,async route=>{
+   const url=new URL(route.request().url());const response=await route.fetch({url:url.origin+'/dev/api/'+url.pathname.split('/proxy/')[1]+url.search});await route.fulfill({response});
+ });
+ await page.goto('/dev/?w=remote-new-tab&ssh=initial-cloud');await expect(page.locator('.xterm')).toBeVisible();
+ const original=page.url();const shell=await page.evaluate(()=>localStorage.getItem('rp2.initial-cloud.window.remote-new-tab.session.dev'));
+ await page.locator('#host > button').click();await page.locator('#host summary').click();await page.getByRole('button',{name:'test-cloud',exact:true}).click();
+ await expect(page.locator('#terminal-tabs .tab.active')).toContainText('SSH · test-cloud');expect(context.pages()).toHaveLength(1);
+ await page.keyboard.press('Escape');const body=page.locator('.terminal-body:not([hidden])');
+ await body.locator('.xterm-helper-textarea').focus();await page.keyboard.type("printf 'local-connection-%s\\n' terminal");await page.keyboard.press('Enter');
+ await expect(body.locator('.xterm-screen')).toContainText('local-connection-terminal');
+ const next=context.waitForEvent('page');complete=true;const remote=await next;
+ await expect(remote).toHaveURL(/\/dev\/\?w=remote-new-tab&ssh=test-cloud/);await expect(remote.locator('#host > button')).toHaveText('test-cloud');
+ expect(page.url()).toBe(original);
+ await expect(page.locator('#host > button')).toHaveText('initial-cloud');
+ await page.locator('#terminal-tabs .tab.active').getByRole('button',{name:'Close tab and end session',exact:true}).click();
+  await expect(page.locator('#terminal-tabs .tab').filter({hasText:'SSH · test-cloud'})).toHaveCount(0);
+ await expect(page.locator('.terminal-body:not([hidden]) .xterm')).toBeVisible();
+ expect(await page.evaluate(()=>localStorage.getItem('rp2.initial-cloud.window.remote-new-tab.session.dev'))).toBe(shell);expect(errors).toEqual([]);
+ expect((await(await request.get('/dev/api/sessions')).json()).sessions.some((s:any)=>s.id===terminal.id)).toBe(false);
 });

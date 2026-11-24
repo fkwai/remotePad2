@@ -43,19 +43,24 @@ resize; hidden panels keep their last dimensions. Files and sessions open in the
 Editor and Terminal tabs. The fixed layout has Files Index on the left, Sessions Index on the right,
 and Editor above Terminal in the center. All four areas are initially visible.
 
-Files Index offers an expandable tree, Favorites and Repos. Existing RemotePad
+Files Index has an icon toolbar for Search, Favorites and Repos. These toggle
+independent docked sections, so all three can stay open together; visibility is
+saved with the window. Filename search includes nested folders, respects the
+hidden-file filter and skips dependency/cache directories. Existing RemotePad
 pins are copied once into ~/.remotepad2/navigation.json and managed separately.
 Each tree directory has ◆ Repo and ★ Favorite toggles, independent of expansion.
 
-Click **RemotePad2** at the top left for installed version/branch/commit,
-local branch versions and **Windows**. **+ New** and window rows open another
+Click **RemotePad2** at the top left for **Sessions**, their count and the
+machine each belongs to. The adjacent **main/dev/nightly** badge opens version
+information and channel switching. **+ New** and window rows open another
 browser window; right-click offers rename or open in this window. × forgets
 its saved layout, including the default window.
 Window profiles persist in ~/.remotepad2/windows.json on the local backend,
 with browser storage as a live cache. Each machine and window remembers panel
 sizes, visibility, directory, Editor/Explorer tabs, split state, hidden-file
 filter and the selected shell. Switching leaves shells running.
-The version view is read-only; it never changes Git branches or restarts a server.
+Switching versions navigates to a separate lane; it never switches the checkout
+or restarts a running server. **Start** can launch a stopped lane.
 
 Sessions Index lists up to 200 unarchived Codex sessions using your custom
 title and project label. For a conversation owned by the running local Codex
@@ -72,7 +77,16 @@ it. Closing an App-linked view detaches that view and leaves the App running.
 
 The top-right label shows the current SSH target when remote (hover for its
 actual hostname) and the local hostname otherwise. Click it for its details and connected
-remote machines. Expand **Add SSH connection** to choose an alias from
+remote machines. Saved machines show their connection state with **Connect**
+or **Open**; actions use icons with hover labels. **Disconnect** stops this
+channel’s SSH forwarding while keeping remote workers/shells and saved
+machines available for reconnection. The list refreshes while the menu is open. **Save machine** stores
+a destination and optional display name without connecting. Star an SSH config
+alias or an existing connection to save it. Long aliases shorten visually, with
+full names in tooltips; pin buttons stay clear of the scrollbar. The trash button removes that saved
+entry without disconnecting or editing SSH config. This list is stored locally
+in `~/.remotepad2/ssh-machines.json` and shared across channels.
+Expand **Add SSH connection** to choose an alias from
 ~/.ssh/config (including Include files), or enter a host or SSH command:
 
 ```sh
@@ -81,13 +95,23 @@ ssh -p 22 -i "/path/to/key" -J jump-host user@machine
 
 Connection progress shows the current phase and elapsed seconds: SSH login,
 checking/installing the backend, opening the tunnel and health validation.
+Connect opens an ordinary **interactive Terminal** and executes the setup
+script there. Shell tracing shows each SSH/bootstrap command as it runs with
+its original stdout/stderr; password/passphrase/host confirmation prompts can
+be answered in that terminal. Ctrl+C cancels the running setup. The shell stays
+open and usable after success or failure. Closing its tab ends that shell;
+closing the browser only detaches. A successful SSH tunnel is an independent
+ControlMaster, so closing the setup terminal does not disconnect the workspace.
+Once connected, a new browser tab opens the remote workspace in the same
+channel and window profile; the original workspace stays open. If the browser
+blocks it, use the ↗ **Open remote workspace** link on the setup terminal tab.
 A matching backend is reused; new backend revisions install once. Jump-host
 handshakes can account for most connection time.
 
-The connection uses your existing OpenSSH keys and known hosts. Authenticate
-and verify a new host in Terminal first if needed. The first connection
+The connection uses your existing OpenSSH keys and known hosts. New-host
+confirmation and authentication are handled by OpenSSH in the setup terminal. The first connection
 uploads the API source and installs locked dependencies under
-~/.remotepad2/backend on the remote machine. That machine needs OpenSSH Unix
+~/.remotepad2/backend/<channel>/<revision> on the remote machine. That machine needs OpenSSH Unix
 socket forwarding, a POSIX shell and Node.js 22+ with npm in its non-interactive PATH.
 RemotePad2 reuses a matching pnpm or prepares its pinned version under
 ~/.remotepad2/tools automatically. Global packages and shell startup files
@@ -97,7 +121,9 @@ The backend runs as your SSH user on a private Unix socket and survives a
 transport disconnect. Files, terminals and Codex metadata belong to the selected
 machine. Local SSH config stays on the local machine. Directory and session
 restore keys are scoped by SSH target. Reconnect from the menu after restarting
-the local server. Each backend revision has its own running sessions.
+the local server. Each channel and backend revision has its own worker and running sessions.
+Switching channels never terminates another channel’s shells. Project files
+on the same target are shared; channels are not filesystem sandboxes.
 
 Shells survive refresh, browser closure and network loss while the backend
 remains running. Sessions Index can reopen them with bounded output replay.
@@ -116,8 +142,9 @@ in sandboxed iframes with relative images, scripts and styles resolved through
 the selected machine. Binary previews allow up to 32 MB.
 
 The tree address input is a popup opened with **Go to path**, beside Refresh.
-The **.*** button shows/hides dotfiles in tree and Explorer. The root and
-selected ancestor directories stay frozen at the top of the tree while scrolling.
+The **.*** button shows/hides dotfiles in tree and Explorer. Expanded ancestor directories stay frozen in a continuous stack while scrolling,
+without selecting a leaf. Each stack stops at its subtree boundary; siblings
+never inherit old frozen rows.
 
 Use directory-popup Enter or a folder’s **Open in Explorer** context
 menu to open a folder tab. The tree expands on a single click; double-click
@@ -162,10 +189,14 @@ The gateway replaces per-preview port links. The public default is **6020**:
 Each instance listens on a private Unix socket under `~/.remotepad2/run`;
 there are no internal HTTP ports to allocate. The gateway proxies HTML, APIs,
 file/HTML preview assets and terminal/Codex WebSockets. Windows and local SSH
-settings stay local. Versions → **Start/Switch** opens a lane in the current
+settings stay local. Click the separate **main/dev/nightly badge** beside the
+RemotePad2 wordmark for Versions. The wordmark itself lists only workbench
+sessions and their machines. Versions → **Start/Switch** opens a lane in the current
 window, preserving `?w=` and the SSH selection; Ctrl/Cmd-click opens a new tab.
 Layout/window profiles are shared across channels; selected PTYs are tracked
-per channel because their processes belong to separate backends.
+per channel because their processes belong to separate backends. A channel
+selects its UI, local server and matching SSH worker together. Remote workers
+are namespaced by channel even when code revisions are identical.
 
 ```sh
 pnpm gateway              # one public listener; leave running

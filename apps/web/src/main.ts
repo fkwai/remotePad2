@@ -1,11 +1,11 @@
-import { channel } from './base';
+import { channel, localFetch } from './base';
 import { initializeWindow, startWindowSave } from './windows';
 import { menu } from './components/menu';
 import { Layout } from './components/layout';
-import { workspaceMenu } from './components/workspaces';
+import { workspaceMenu, versionMenu } from './components/workspaces';
 import type { FileContent, SessionInfo } from '@remotepad2/protocol';
 import { api, button } from './api';
-import { workspaceKey } from './connection';
+import { workspaceKey, sshTarget } from './connection';
 import { connectionsButton } from './components/connections';
 import { CodexPanel } from './components/codex';
 import { TerminalPanel } from './components/terminal';
@@ -19,14 +19,14 @@ import './style.css';
 
 await initializeWindow();
 document.querySelector('#app')!.innerHTML = `
-<header><div id="version"></div><nav id="controls"></nav><div class="header-right"><div id="layout-menu"></div><div id="host"></div></div></header>
+<header><div class="header-left"><div id="version"></div><div id="channel"></div></div><nav id="controls"></nav><div class="header-right"><div id="layout-menu"></div><div id="host"></div></div></header>
 <main id="workbench"><aside id="files-index"></aside><div id="workspace"><section id="editor" class="panel">
 <div id="editor-panes"><div id="primary-editor" class="editor-pane"><div class="tabs" id="editor-tabs"></div><div id="editor-content" class="panel-content"></div></div><div id="editor-divider" role="separator" aria-label="Editor split width" hidden></div><div id="secondary-editor" class="editor-pane" hidden><div class="tabs" id="secondary-tabs"></div><div id="secondary-content" class="panel-content"></div></div></div></section>
 <section id="terminal" class="panel"><div class="tabs" id="terminal-tabs"></div><div id="terminal-content" class="panel-content"></div></section></div><aside id="sessions-index"></aside></main>
 <footer id="status" role="status">Ready</footer>`;
 const get = (id: string) => document.getElementById(id)!;
 const status = (message: string) => { get('status').textContent = message; };
-const terminals = new Map<string, { info: SessionInfo; panel: TerminalPanel | CodexPanel }>();
+const terminals = new Map<string, { info: SessionInfo; panel: TerminalPanel | CodexPanel; remoteUrl?:string }>();
 const editors = new Map<string, EditorPanel | FolderPanel>();
 let activeSession = '';
 let activeFile = '';
@@ -43,13 +43,23 @@ const visibility = panels.visible;
 const layout = () => panels.apply();
 panels.menu(get('layout-menu'));
 workspaceMenu(get('version'));
-const showMachine = connectionsButton(get('host'), status);
+versionMenu(get('channel'));
+const showMachine = connectionsButton(get('host'), status, (info,url) => {
+  if(url){const terminal=terminals.get(info.id);if(terminal){terminal.remoteUrl=url;renderTerminals();}}
+  else openSession(info);
+});
 function renderTerminals() {
   const tabs = [...terminals].map(([id, { info, panel }]) => {
     panel.element.hidden = id !== activeSession;
     const tab = document.createElement('div');
     tab.className = 'tab' + (id === activeSession ? ' active' : '');
-    tab.append(button(info.name + ' ' + id.slice(0, 6), () => openSession(info)), button('×', () => void closeSession(id), 'Close tab and end session'));
+    const closeLabel = 'Close tab and end session';
+    const close = button('×', () => void closeSession(id), closeLabel);
+    close.setAttribute('aria-label', closeLabel);
+    tab.append(button(info.name + (info.kind === 'ssh-connect' ? '' : ' ' + id.slice(0, 6)), () => openSession(info)));
+    const remoteUrl=terminals.get(id)?.remoteUrl;
+    if(remoteUrl){const link=document.createElement('a');link.href=remoteUrl;link.target='_blank';link.rel='noopener';link.textContent='↗';link.title='Open remote workspace';link.setAttribute('aria-label','Open remote workspace');tab.append(link);}
+    tab.append(close);
     return tab;
   });
   get('terminal-tabs').replaceChildren(...tabs, button('+', () => void createSession(), 'New shell'));
@@ -59,25 +69,28 @@ function openSession(info: SessionInfo) {
   activeSession = info.id;
   if (!terminals.has(info.id)) {
     const report = (message: string) => { if (activeSession === info.id) status(message); };
-    const panel = info.kind === 'codex-app' ? new CodexPanel(info.codexId!, report) : new TerminalPanel(info.id, report);
+    const panel = info.kind === 'codex-app' ? new CodexPanel(info.codexId!, report) : new TerminalPanel(info.id, report, info.kind==='ssh-connect');
     terminals.set(info.id, { info, panel });
     get('terminal-content').append(panel.element);
   }
   visibility.terminal = true;
-  localStorage.setItem(workspaceKey(channel ? 'session.' + channel : 'session'), info.id);
+  if (info.kind !== 'ssh-connect' || !sshTarget) localStorage.setItem(workspaceKey(channel ? 'session.' + channel : 'session'), info.id);
   renderTerminals();
   layout();
 }
 async function closeSession(id: string) {
   try {
-    if (terminals.get(id)?.info.kind !== 'codex-app') await api('/api/sessions/' + id, { method: 'DELETE' });
+    const kind=terminals.get(id)?.info.kind;
+    if(kind==='ssh-connect')await localFetch('/api/sessions/'+id,{method:'DELETE'});
+    else if(kind!=='codex-app')await api('/api/sessions/'+id,{method:'DELETE'});
     const terminal = terminals.get(id);
     terminal?.panel.dispose();
     terminal?.panel.element.remove();
     terminals.delete(id);
     sessionList = sessionList.filter((s) => s.id !== id);
     if (id === activeSession) activeSession = [...terminals.keys()].at(-1) || '';
-    localStorage.setItem(workspaceKey(channel ? 'session.' + channel : 'session'), activeSession);
+    const selected = terminals.get(activeSession)?.info;
+    if (selected?.kind !== 'ssh-connect' || !sshTarget) localStorage.setItem(workspaceKey(channel ? 'session.' + channel : 'session'), activeSession);
     renderTerminals();
   } catch (error) { status((error as Error).message); }
 }
@@ -194,7 +207,7 @@ async function refresh() {
   const result = await api<{ sessions: SessionInfo[] }>('/api/sessions');
   sessionList = result.sessions;
   for (const [id, terminal] of terminals) {
-    if (terminal.info.kind === 'codex-app') continue;
+    if (terminal.info.kind === 'codex-app' || (terminal.info.kind === 'ssh-connect' && sshTarget)) continue;
     const info = sessionList.find((s) => s.id === id);
     if (info) terminal.info = info;
     else {
@@ -222,6 +235,7 @@ async function start() {
     const health = await api<{ hostname: string }>('/api/health');
     showMachine(health.hostname);
     await refresh();
+    if (terminals.get(activeSession)?.info.kind === 'ssh-connect') { layout(); return; }
     const savedId = localStorage.getItem(workspaceKey(channel ? 'session.' + channel : 'session'));
     if (savedId?.startsWith('app:')) {
       const info = await api<SessionInfo>('/api/sessions', { method: 'POST', body: JSON.stringify({ codexId: savedId.slice(4) }) });

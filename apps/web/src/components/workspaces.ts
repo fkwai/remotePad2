@@ -7,7 +7,53 @@ import { menu } from './menu';
 
 export function workspaceMenu(host: HTMLElement) {
   const toggle = popover(host, 'RemotePad2', (body, close) => {
-    const head = document.createElement('div'); head.className = 'version-pop-head'; head.append('RemotePad2', button('×', close, 'Close version menu')); body.append(head);
+    const head = document.createElement('div'); head.className = 'version-pop-head'; head.append('RemotePad2', button('×', close, 'Close sessions menu')); body.append(head);
+    const error = document.createElement('div'); error.className = 'error'; body.append(error);
+    const heading = document.createElement('div'); heading.className = 'version-windows-head';
+    heading.append('Sessions', button('+ New', () => {
+      void saveWindow().catch(() => {});
+      window.open(windowUrl(crypto.randomUUID()), '_blank', 'noopener');
+    }, 'Open new workspace window'));
+    body.append(heading);
+    const count = document.createElement('small'); body.append(count);
+    const list = document.createElement('div'); body.append(list);
+    const hostname = localFetch('/api/ssh/hosts').then(r=>r.json()).then(data=>data.local.hostname as string).catch(()=>'Local machine');
+    const render = async () => {
+      try {
+        await saveWindow(); const [rows,localHostname] = await Promise.all([windowList(),hostname]); list.replaceChildren();
+        count.textContent = rows.length + (rows.length === 1 ? ' session' : ' sessions');
+        for (const row of rows) {
+          const current = row.id === profile && row.ssh === sshTarget;
+          const line = document.createElement('div'); line.className = 'workspace-row' + (current ? ' current' : '');
+          const open = button('', () => window.open(windowUrl(row.id, row.ssh), '_blank', 'noopener'));
+          const name = document.createElement('span'); name.className = 'version-window-label'; name.textContent = (row.name === row.id || row.name === 'Default') ? (row.state.directory?.split('/').filter(Boolean).pop() || row.name) : row.name; open.title = row.state.directory || row.name;
+          const detail = document.createElement('small'); detail.textContent = (row.ssh || localHostname) + (current ? ' · here' : ''); open.append(name, detail);
+          const rename = async () => {
+            const name = prompt('Window name', row.name); if (!name?.trim()) return;
+            const response = await localFetch('/api/windows/' + encodeURIComponent(row.id), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ssh: row.ssh, name: name.trim() }) });
+            if (!response.ok) { error.textContent = 'Could not rename window.'; return; } void render();
+          };
+          open.oncontextmenu = (event) => menu(event, [
+            { label: 'Open in this window', action: async () => { await saveWindow().catch(() => {}); location.assign(windowUrl(row.id, row.ssh)); } },
+            { label: 'Open in new window', action: () => window.open(windowUrl(row.id, row.ssh), '_blank', 'noopener') },
+            { label: 'Rename', action: () => void rename() },
+            { label: 'Forget saved layout', action: () => void forgetWindow(row).then(() => { if (!current) void render(); }).catch((err) => { error.textContent = err.message; }) },
+          ]);
+          line.append(open, button('×', () => void forgetWindow(row).then(() => { if (!current) void render(); }).catch((err) => { error.textContent = err.message; }), current ? 'Forget this layout and start blank' : 'Forget saved window'));
+          list.append(line);
+        }
+      } catch (err) { error.textContent = (err as Error).message; }
+    };
+    void render();
+  });
+  toggle.classList.add('brand'); toggle.setAttribute('aria-label', 'RemotePad2');
+  const mark = document.createElement('span'); mark.className = 'brand-mark';
+  const name = document.createElement('span'); name.className = 'brand-name'; name.textContent = 'RemotePad2';
+  toggle.replaceChildren(mark, name);
+}
+
+export function versionMenu(host: HTMLElement) {
+  const toggle = popover(host, 'Versions', (body) => {
     const version = document.createElement('div'); version.className = 'version-info'; version.textContent = 'Loading version…'; body.append(version);
     const error = document.createElement('div'); error.className = 'error'; body.append(error);
     void localFetch('/api/version').then(async (response) => {
@@ -52,50 +98,15 @@ export function workspaceMenu(host: HTMLElement) {
           if (body.isConnected) window.setTimeout(refresh, 1500);
         };
         void refresh();
-      } else for (const branch of info.branches || []) {
+      } else for (const branch of (info.branches || []).filter((branch:{name:string})=>['main','dev','nightly'].includes(branch.name))) {
         const row = document.createElement('div'); row.className = 'version-branch-row'; const name = document.createElement('span'); name.textContent = branch.name;
         const commit = document.createElement('small'); commit.textContent = branch.commit + (branch.name === info.branch ? ' · here' : ''); row.append(name, commit); channels.append(row);
       }
     }).catch((err) => { version.textContent = err.message; });
-    const heading = document.createElement('div'); heading.className = 'version-windows-head';
-    heading.append('Windows', button('+ New', () => {
-      void saveWindow().catch(() => {});
-      window.open(windowUrl(crypto.randomUUID()), '_blank', 'noopener');
-    }, 'Open new workspace window'));
-    body.append(heading);
-    const list = document.createElement('div'); body.append(list);
-    const render = async () => {
-      try {
-        await saveWindow(); const rows = await windowList(); list.replaceChildren();
-        for (const row of rows) {
-          const current = row.id === profile && row.ssh === sshTarget;
-          const line = document.createElement('div'); line.className = 'workspace-row' + (current ? ' current' : '');
-          const open = button('', () => window.open(windowUrl(row.id, row.ssh), '_blank', 'noopener'));
-          const name = document.createElement('span'); name.className = 'version-window-label'; name.textContent = (row.name === row.id || row.name === 'Default') ? (row.state.directory?.split('/').filter(Boolean).pop() || row.name) : row.name; open.title = row.state.directory || row.name;
-          const detail = document.createElement('small'); detail.textContent = (row.ssh ? row.ssh + ' · ' : '') + row.id + (current ? ' · here' : ''); open.append(name, detail);
-          const rename = async () => {
-            const name = prompt('Window name', row.name); if (!name?.trim()) return;
-            const response = await localFetch('/api/windows/' + encodeURIComponent(row.id), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ssh: row.ssh, name: name.trim() }) });
-            if (!response.ok) { error.textContent = 'Could not rename window.'; return; } void render();
-          };
-          open.oncontextmenu = (event) => menu(event, [
-            { label: 'Open in this window', action: async () => { await saveWindow().catch(() => {}); location.assign(windowUrl(row.id, row.ssh)); } },
-            { label: 'Open in new window', action: () => window.open(windowUrl(row.id, row.ssh), '_blank', 'noopener') },
-            { label: 'Rename', action: () => void rename() },
-            { label: 'Forget saved layout', action: () => void forgetWindow(row).then(() => { if (!current) void render(); }).catch((err) => { error.textContent = err.message; }) },
-          ]);
-          line.append(open, button('×', () => void forgetWindow(row).then(() => { if (!current) void render(); }).catch((err) => { error.textContent = err.message; }), current ? 'Forget this layout and start blank' : 'Forget saved window'));
-          list.append(line);
-        }
-      } catch (err) { error.textContent = (err as Error).message; }
-    };
-    void render();
   });
-  toggle.classList.add('brand'); toggle.setAttribute('aria-label', 'RemotePad2');
-  const mark = document.createElement('span'); mark.className = 'brand-mark';
-  const name = document.createElement('span'); name.className = 'brand-name'; name.textContent = 'RemotePad2';
-  const version = document.createElement('span'); version.className = 'brand-version';
-  const channel = document.createElement('span'); channel.className = 'brand-channel';
-  toggle.replaceChildren(mark, name, version, channel);
-  void localFetch('/api/version').then((response) => response.json()).then((info) => { version.textContent = 'v' + info.version; channel.textContent = info.branch; }).catch(() => {});
+  toggle.classList.add('brand-channel');
+  toggle.setAttribute('aria-label', 'Switch version');
+  toggle.textContent = activeChannel || 'dev';
+  toggle.title = 'Switch version';
+  if (!activeChannel) void localFetch('/api/version').then(r=>r.json()).then(info=>{toggle.textContent=info.branch;}).catch(()=>{});
 }

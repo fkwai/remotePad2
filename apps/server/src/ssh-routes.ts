@@ -1,13 +1,15 @@
 import os from 'node:os';
+import type {TerminalService} from './terminal.ts';
+import {savedMachines} from './ssh-machines.ts';
 import { previewRequest } from './preview-access.ts';
 import { sshConfigHosts } from './ssh-hosts.ts';
 import { request } from 'node:http';
 import { createConnection } from 'node:net';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import WebSocket, { type RawData } from 'ws';
-import { closeSsh as closeSshConnections, connectedHosts as connectedSshHosts, connectSsh, sshProgress, sshSocket as socketFor, parseSsh } from './ssh.ts';
+import { closeSsh as closeSshConnections, connectedHosts as connectedSshHosts, connectSsh, disconnectSsh, sshProgress, sshSocket as socketFor, parseSsh } from './ssh.ts';
 
-const workerPath = /^\/api\/(?:health|files|file|preview|sessions|codex|navigation)(?:\/|\?|$)/;
+const workerPath = /^\/api\/(?:health|files|file|search|preview|sessions|codex|navigation)(?:\/|\?|$)/;
 const workerSocket = /^\/ws\/(?:terminal|codex)\/[^/?]+$/;
 
 function localBrowser(req: FastifyRequest) {
@@ -21,7 +23,8 @@ function localBrowser(req: FastifyRequest) {
   return (!origin || sameOrigin) && (!site || site === 'same-origin' || directRead);
 }
 
-export async function registerSshRoutes(app: FastifyInstance) {
+export async function registerSshRoutes(app: FastifyInstance, home = os.homedir(), terminals?:TerminalService) {
+  const machines = savedMachines(home);
   await app.register(async (router) => {
     router.addHook('onRequest', async (req, reply) => {
       if (!localBrowser(req) && !previewRequest(req)) return reply.code(403).send({ error: 'SSH connections are available from the local RemotePad browser.' });
@@ -35,9 +38,18 @@ export async function registerSshRoutes(app: FastifyInstance) {
         arch: os.arch(),
         homedir: os.homedir(),
       },
-      hosts: await sshConfigHosts(),
+      hosts: await sshConfigHosts(home),
+      saved: machines.read(),
       connected: connectedSshHosts(),
     }));
+
+    router.post<{Body:{command?:unknown;name?:unknown}}>('/api/ssh/machines', async (req,reply)=>{
+      try {return machines.save(req.body?.command,req.body?.name);}
+      catch(error){return reply.code(400).send({error:(error as Error).message});}
+    });
+    router.delete<{Params:{id:string}}>('/api/ssh/machines/:id', async req=>{
+      machines.remove(req.params.id);return {ok:true};
+    });
 
     router.get<{ Params: { host: string } }>('/api/ssh/:host/status', async (req) => ({
       connected: Boolean(socketFor(req.params.host)), ...sshProgress(req.params.host),
@@ -50,11 +62,18 @@ export async function registerSshRoutes(app: FastifyInstance) {
       }
       try {
         parseSsh(host);
-        await connectSsh(host);
-        return { connected: true };
+        if(!terminals)throw new Error('SSH terminal service unavailable.');
+        return connectSsh(host,terminals);
       } catch (err) {
         return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
       }
+    });
+
+    router.post<{Body:{host?:string}}>('/api/ssh/disconnect',async(req,reply)=>{
+      const host=req.body?.host;
+      try {parseSsh(host as string);}catch(error){return reply.code(400).send({error:(error as Error).message});}
+      try {await disconnectSsh(host!);return {connected:false};}
+      catch(error){return reply.code(502).send({error:(error as Error).message});}
     });
 
     router.all<{ Params: { host: string } }>('/api/ssh/:host/proxy/*', async (req, reply) => {
@@ -117,5 +136,5 @@ export async function registerSshRoutes(app: FastifyInstance) {
       client.on('error', () => upstream.terminate());
     });
   });
-  app.addHook('onClose', async () => closeSshConnections());
+  app.addHook('onClose', async () => {await closeSshConnections();});
 }

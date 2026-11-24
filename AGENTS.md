@@ -24,8 +24,20 @@ Terminal-first web workbench, developed in this repository on dev.
   locally and through SSH without allowing sandbox access to normal APIs.
 - File tree address input lives in the Go to path popover beside Refresh;
   .* toggles dotfiles in both tree and Explorer and persists per window.
-  File tree is its own scroll container: parent row, root and selected ancestors
-  stick to the top while the rest scrolls.
+  File tree is its own scroll container. Parent row plus every expanded folder
+  in the scrolled subtree stick consecutively at 28px intervals, independent of
+  selection. Nested .tree-branch containers bound stickiness to each subtree;
+  there is no top padding/margin gap or sticky bleed into sibling branches.
+- File tools are icon-only Search / Favorites / Repos, followed by Refresh,
+  Go to path and hidden-files. The first three toggle independent docked
+  sections (all enabled initially), persisted per window as sidebar-panels.
+  Favorites/Repos are no longer mutually exclusive tabs. SVG icons share one
+  stroke style; directory pin toggles remain independent.
+- Filename search: /api/search (local or SSH) returns bounded nested file/dir
+  matches, respecting hidden files and skipping dependency/cache directories.
+  Search input debounces requests and cancels stale responses; it never delays
+  folder clicks. Pending listings for the same directory share one request,
+  so double-click does not send duplicate tree loads. Sidebar panel visibility is in the server window snapshot.
 - Folder Explorer opens from directory-popup Enter or tree right-click Open in
   Explorer (double-click / Enter shortcuts). No Open folder toolbar button.
   Tree rows keep their DOM identity: click toggles immediately; the second
@@ -59,8 +71,10 @@ Terminal-first web workbench, developed in this repository on dev.
   start-turn v2). It is version-dependent and must fail visibly on incompatibility.
 - Unowned Codex histories use the installed CLI via codex resume. RemotePad2
   does not edit the Codex database. The owning App or CLI writes its history.
-- Left RemotePad2 wordmark matches the original mark/type/version/branch badge.
-  The version popover shows installed version, local branch heads and Windows.
+- Left RemotePad2 wordmark opens only the workbench Sessions list: count,
+  names and machine hostname/SSH destination. The adjacent, separately clickable
+  main/dev/nightly badge opens Versions with installed version and lane switching.
+  Version information never belongs in the wordmark Sessions menu.
   + New and window rows open another browser window; right-click offers same-
   window open and rename. × forgets the saved layout (including default).
 - Local /api/windows stores window snapshots in ~/.remotepad2/windows.json,
@@ -73,12 +87,43 @@ Terminal-first web workbench, developed in this repository on dev.
   while local. Async local-host discovery must never overwrite the SSH label.
   Machine controls mount before workspace health checks so reconnect stays
   available if a remote backend is unavailable. Tooltip includes remote hostname.
-  Its Computers menu starts with
-  user/platform/home and connected remotes; Add SSH connection is collapsed
-  until clicked, then reveals config aliases (including Includes) and command input.
+  Its Computers menu is the SSH manager: local user/platform/home, saved machines
+  with Connected / Not connected / Connecting / Disconnecting state. Open, Connect,
+  Disconnect, Save and Remove use icon buttons with labels/tooltips.
+  Refresh and a 3-second poll update states while open. Add SSH connection is
+  collapsed until clicked and reveals config aliases (including Includes),
+  command and optional name. Save machine adds without connecting; star pins a
+  config alias or existing connection. Trash removes only the saved entry, never
+  edits SSH config or disconnects a live transport. Destinations persist locally
+  in ~/.remotepad2/ssh-machines.json, shared across lanes. GET /api/ssh/hosts
+  includes saved rows; POST /api/ssh/machines and DELETE /api/ssh/machines/:id
+  are local-only, validated with the same argument parser as Connect.
+  Disconnect (POST /api/ssh/disconnect) stops only this lane’s private master
+  for that destination, preserving saved entries, setup shell and remote PTYs.
+  Disconnected remote windows stay on their target so users can reconnect.
+  Config rows reserve a fixed 28px pin button; long aliases ellipsize and both
+  SSH lists reserve scrollbar gutter plus right padding, including overlay bars.
+- Connect creates an ordinary local PTY session (kind ssh-connect), opens it
+  in Terminal and runs /bin/bash -x <private-script> for packaging and setup. Both local SSH
+  invocations and remote bootstrap commands are traced where they execute;
+  raw stdout/stderr and interactive /dev/tty authentication use that same PTY.
+  POST /api/ssh/connect returns its terminal immediately; status polls only
+  readiness/phase, never a transcript. SSH terminals always use local WS/API
+  even when launched from a remote workbench. Shell returns after setup and
+  remains usable; browser closure never ends it. Closing the tab ends the shell
+  and cancels an unfinished command. A successful -fN ControlMaster transport
+  is owned separately by SSH management, so closing its setup shell leaves
+  remote workspaces/PTYs connected. Local backend shutdown explicitly stops
+  masters via their private control sockets; remote workers remain alive.
+  Success opens a new browser tab retaining lane, ?w= and setting ?ssh=; the
+  original workspace stays open. Local windows restore the selected SSH setup
+  terminal like any shell; remote windows keep their remote-shell selection. A ↗ link on the setup terminal tab supports
+  popup-blocked browsers. No read-only connection-log component exists.
+- Escape closes an open popover in capture phase and consumes the key before
+  the underlying terminal receives it (avoids entering shell vi command mode).
 - SSH parsing accepts a config alias, user@host, or ssh with -p/-i/-J.
   Arguments go directly to OpenSSH; arbitrary remote commands are rejected.
-- ssh.ts installs a versioned API backend under ~/.remotepad2/backend on the
+- ssh.ts installs a versioned API backend under ~/.remotepad2/backend/<channel>/<revision> on the
   target. Target prerequisites are POSIX/OpenSSH and Node.js 22+ with npm. Missing or
   mismatched pnpm is bootstrapped at the version in package.json into
   ~/.remotepad2/tools, without changing global tools or shell configuration.
@@ -86,9 +131,10 @@ Terminal-first web workbench, developed in this repository on dev.
   Local health probes allow 5 seconds per request (jump RTT can exceed 500ms),
   with a 30-second total tunnel deadline. Connection progress/errors appear
   above the alias list and in the main status bar, even while the list is open.
-  /api/ssh/:host/status reports phase/start time; the UI polls phases with elapsed
+  /api/ssh/:host/status reports terminal, phase and start time; the UI polls phases with elapsed
   seconds during connect. Bootstrap reports UID on its existing connection,
-  avoiding another SSH handshake just to run id -u.
+  avoiding another SSH handshake just to run id -u. New host confirmations and
+  passphrase/password prompts appear in the real setup terminal.
 - The worker exposes files/navigation/sessions/Codex on the target. Browser
   URLs and localStorage are machine-scoped. Local SSH settings stay local.
 - pnpm test checks IPC ownership/input routing/patching and SSH argument parsing.
@@ -133,3 +179,13 @@ Terminal-first web workbench, developed in this repository on dev.
 - Gateway tests: pnpm test:gateway. They start 3 throwaway full backends over
   Unix sockets behind one throwaway gateway on E2E_PORT; no live lane is touched.
   Tests use portable ~/work/tmp paths (REMOTEPAD2_TEST_TMP overrides unit temp root).
+
+- A selected lane owns UI + local API + SSH worker. Remote installs and sockets
+  include main/dev/nightly plus revision, preventing identical-code lanes from
+  sharing PTYs. Worker health reports its channel. Changing a lane never kills
+  another worker. Target project files remain shared, not sandboxed per lane.
+
+- SSH packaging/setup scripts explicitly trap INT/TERM to exit 130/143 before
+  recording EXIT status. Bash 5 can otherwise record zero after Ctrl+C and
+  wrongly enter tunnel health polling. The PTY regression asserts code 130
+  and a usable shell after cancellation; Linux PR CI must pass before merge.
