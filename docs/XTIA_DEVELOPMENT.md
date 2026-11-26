@@ -48,7 +48,7 @@ Linux Bash 的 Ctrl+C 曾在 EXIT trap 中被记成成功 0，现已显式处理
 
 ## 当前技术和文件入口
 
-后端仍然是 TypeScript/Node，**没有完成 Go 迁移**。
+前端、本机服务和 gateway 使用 TypeScript/Node。Linux amd64/arm64 SSH 目标优先使用 Go worker。详见 [SSH worker 部署](#go-ssh-worker-部署)。
 
 | 内容 | 入口 |
 | --- | --- |
@@ -60,6 +60,7 @@ Linux Bash 的 Ctrl+C 曾在 EXIT trap 中被记成成功 0，现已显式处理
 | 服务入口、HTTP / WS | `apps/server/src/index.ts` |
 | PTY 与 shell 生命周期 | `apps/server/src/terminal.ts` |
 | SSH 脚本、ControlMaster、状态 | `apps/server/src/ssh.ts`、`ssh-routes.ts` |
+| Go worker、SSH 二进制选择与安装 | `apps/worker/`、`apps/server/src/ssh-worker.ts` |
 | SSH 配置别名 / 常用列表 / 通道隔离 | `ssh-hosts.ts`、`ssh-machines.ts`、`ssh-runtime.ts`（server src 下） |
 | 文件读写、预览、搜索 | `apps/server/src/files.ts`、`search.ts`、`preview-access.ts` |
 | Codex CLI 元数据 / App follower | `apps/server/src/codex.ts`、`codex-app.ts` |
@@ -101,15 +102,14 @@ Docker 测试环境需要在 xtia 新建，仓库目前没有专用 Dockerfile/C
 - xtia 做代码和 Docker 测试；功能分支/PR 以 dev 为目标。CI 通过后，开发 agent 可以直接合入 dev，不需要逐次再问用户。
 - main 的发布需要用户明确要求；nightly 由 GitHub Actions 自动验证 dev 并发布，不依赖 Air 开机。
 - 合并/push/pull 不代表运行后端已更新，也不授权重启现有进程。
-- Air 上先 `git pull --ff-only origin dev`，只做安装/运行所需工作。当前 Node 版仍需要 Node/pnpm，现有 lane 启动器会在启动已停止的通道前安装和构建；“只下载 Go 二进制即可运行”还没有实现。
+- Air 在已有 dev 检出执行 `git pull --ff-only origin dev`，只做安装和运行所需工作。本地客户端仍使用 Node/pnpm。Air 不需要安装 Go，远端 worker 由 CI 构建。
 - `pnpm lanes status` 可以检查通道。更新后端需要明确的停止/启动操作；`pnpm lanes start dev` 不会替换已经运行的进程。重启前处理本机 shell 生命周期，不擅自结束用户 session。
 
-## 下一阶段：Go 方向
+## Go SSH worker 部署
 
-用户希望前后端分工更清晰、远端后端部署更简单，已讨论机器侧服务使用 Go：
+- dev CI 验证通过后，在 GitHub 发布独立 worker 预发布资产。资产以 `apps/worker` 的 Git tree ID 索引，因此源码相同的 nightly 可使用同一资产。
+- 客户端在新连接时下载并缓存归档，通过现有 SSH 安装流程上传。目标检测 OS/CPU，按通道和归档摘要安装，启动后使用私有 Unix socket。SSH 断开重连复用该 worker 和 shell。
+- 不支持的目标、存在远端 Codex App IPC socket 的目标，或客户端暂时取不到 Go 资产时，使用现有 Node worker。可在启动本地后端前设置 `REMOTEPAD2_REMOTE_WORKER=node` 选择 Node。
+- 本地开发可设置 `REMOTEPAD2_WORKER_ARCHIVE` 指向手工构建的归档。归档包含 `worker-linux-amd64` 和 `worker-linux-arm64` 两个根目录文件，构建步骤见 CI。Linux 验证包括 `go test -race ./...` 和 `bash scripts/test-worker-ssh.sh`，后者使用临时 HOME、密钥及独立 loopback SSH 端口。
 
-- 前端继续 JS/TS，Node 用于开发/打包；浏览器执行构建后的网页。
-- Go 服务负责文件、PTY、HTTP/WS、SSH 等机器侧能力；按 OS/CPU 在 CI 预构建，远端连接时上传对应文件。
-- 可进一步把构建后的网页嵌入本机 Go 程序，减少 Air 的部署依赖。
-
-这是待落实的设计方向。这次交接没有启动重写。接手时先审计现有接口、状态归属、PTY 与进程恢复、原生依赖和 Codex App IPC，再提出逐步迁移顺序。Go 不会自动解决网络 RTT、前端点击延迟或浏览器交互问题；已有能力和数据格式要有清晰兼容路径。
+本地 gateway、SSH 管理和 Codex App follower 后续可单独迁移。Agent CLI 与 App 继续由其运行时持有。

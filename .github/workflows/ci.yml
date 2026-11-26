@@ -15,6 +15,19 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/worker/go.mod
+          cache-dependency-path: apps/worker/go.sum
+      - name: Test Go worker and build Linux binaries
+        working-directory: apps/worker
+        run: |
+          go test -race ./...
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -ldflags="-s -w" -o "dist/worker-linux-$arch" .
+          done
+          tar -czf dist/worker-binaries.tar.gz -C dist worker-linux-amd64 worker-linux-arm64
       - uses: pnpm/action-setup@v4
         with:
           version: 10.15.0
@@ -25,6 +38,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm test
+        env:
+          REMOTEPAD2_REMOTE_WORKER: node
+      - name: Test Go worker over isolated SSH
+        run: bash scripts/test-worker-ssh.sh
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
       - run: pnpm test:gateway
@@ -34,3 +51,31 @@ jobs:
           name: playwright-traces
           path: ~/work/tmp/remotepad2-e2e/results
           if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        with:
+          name: worker-binaries
+          path: apps/worker/dist/worker-binaries.tar.gz
+          if-no-files-found: error
+  publish-worker:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: worker-binaries
+      - name: Publish the verified worker archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="worker-$(git rev-parse HEAD:apps/worker)"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            exit 0
+          fi
+          gh release create "$tag" worker-binaries.tar.gz --target "$GITHUB_SHA" \
+            --title "RemotePad2 SSH worker ${tag#worker-}" --prerelease --latest=false \
+            --notes "Linux amd64 and arm64 SSH workers built and tested by dev CI."
