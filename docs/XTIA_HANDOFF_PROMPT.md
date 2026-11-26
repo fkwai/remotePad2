@@ -16,8 +16,7 @@ SSH 准备在真实本机 Terminal/PTY 里运行，显示实际命令和原始�
 关闭浏览器不应结束 shell；关闭对应终端 tab 才结束 shell。本机后端重启会结束其持有的本机 shell，不能为了测试重启用户实例。
 Agent 通过外部 CLI / Codex App follower 接入，RemotePad 不拥有 agent runtime；保持 CLI/App 会话同步已有逻辑，App follower 是本机 IPC，不能假设 Linux 有 Mac App。
 
-目前前端和后端都还是 TypeScript/Node：apps/web、apps/server、packages/protocol。
-用户已讨论并倾向机器侧后端用 Go，以便 CI 按系统/架构预编译后上传单个程序，减少远端 Node/pnpm 安装负担；前端继续 JS/TS。Go 迁移尚未开始，交接这一步没有要求立即重写。后续先审计接口、PTY 生命周期和部署，再提出可逐步验证的方案。
+前端、本地后端和 gateway 使用 TypeScript/Node。Linux amd64/arm64 SSH 目标优先使用 apps/worker 的 Go 二进制。客户端从 GitHub 下载 CI 已构建的 worker，目标机通过 SSH 接收并运行。Node fallback 和隔离 SSH 验证见 XTIA_DEVELOPMENT.md。
 
 功能基线 dev 6eb0e4d；PR #1 已合并，修复 Linux Bash Ctrl+C 被 EXIT trap 写成 0：打包/连接脚本显式 trap INT/TERM 返回 130/143，测试还要求取消后 shell 可继续输入。另修复全新 HOME 下 1 session / sessions 的断言。
 这个基线的 Ubuntu CI 已通过：构建、16 单元、16 浏览器、3 gateway 测试。2026-11-26 nightly 287d4a4 已成功发布。请以接手时最新 origin/dev 为准，不要回退到这些历史 SHA。
