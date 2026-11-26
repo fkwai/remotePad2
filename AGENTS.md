@@ -2,6 +2,29 @@
 
 Terminal-first web workbench, developed in this repository on dev.
 
+## Development location and handoff (2026-11-26)
+
+- Active development moves to **xtia**. The MacBook Air is an update/run client:
+  pull completed changes there; do not use it for feature edits, Docker matrices
+  or development test runs. This handoff's documentation is the final local wrap-up.
+- Canonical repository: https://github.com/fkwai/remotePad2, branch **dev**.
+  The older https://github.com/fkwai/remotePad is reference material; its final
+  local SSH changes were preserved on its dev branch at a54d0db.
+- Start on xtia by reading this file and [the development handoff](docs/XTIA_DEVELOPMENT.md).
+  [The standalone handoff prompt](docs/XTIA_HANDOFF_PROMPT.md) can seed a new chat.
+- For agent-made dev changes, passing PR CI authorizes merging into **dev**
+  without another user confirmation. Publishing **main** needs an explicit
+  release request. Merging/pulling does not authorize restarting live processes.
+- Frontend and backend are currently **TypeScript/Node**. Go for machine-side
+  services is a discussed direction, not an implemented migration. Preserve
+  the browser/API/PTY contract when planning it; keep agent runtimes external.
+- Build independent Docker test environments on xtia. Never stop or repurpose
+  existing CatsCo containers, use real credentials as fixtures, or expose this
+  unauthenticated workbench publicly. CI and Docker tests need isolated HOME,
+  session state and ports. Existing user shells must keep running.
+
+## Product map
+
 - Browser UI lives in apps/web. PTY and process ownership live in apps/server.
 - Shared transport types live in packages/protocol.
 - Default local ports are 6020 (built app/API) and 6021 (Vite development).
