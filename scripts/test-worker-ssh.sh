@@ -64,7 +64,8 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 UsePAM yes
 AllowUsers $(id -un)
-AllowTcpForwarding no
+# OpenSSH 9.6 also checks its local-forward permit set for Unix sockets.
+AllowTcpForwarding local
 AllowStreamLocalForwarding yes
 ForceCommand $root/force-command
 EOF
