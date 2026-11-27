@@ -1,4 +1,5 @@
 import {remoteRuntime} from './ssh-runtime.ts';
+import {goBootstrap,goWorkerArchive} from './ssh-worker.ts';
 import {displayCommand} from './ssh-command.ts';
 import {execFile} from 'node:child_process';
 import {createHash} from 'node:crypto';
@@ -67,6 +68,13 @@ async function connect(input:string,job:{session:Session;dir?:string;cancelled:b
   try {
     phase(input,'Packaging backend');
     const dir=await mkdtemp('/tmp/rp2-prepare-');job.dir=dir;
+    const goWorker=await goWorkerArchive(root,dir).catch((error: Error)=>{
+      if(process.env.REMOTEPAD2_WORKER_ARCHIVE)throw error;
+      if(!job.cancelled && job.session.info.alive)job.session.process.write(
+        "printf '%s\\n' "+displayCommand(['Go worker unavailable; using Node. '+error.message])+'\r',
+      );
+      return undefined;
+    });
     const archive=dir+'/backend.tar',packed=dir+'/packed',packScript=dir+'/package.sh';
     const packageFiles=['package.json','pnpm-lock.yaml','pnpm-workspace.yaml','tsconfig.json','apps/server/src','apps/server/scripts','apps/server/package.json','apps/server/tsconfig.json','packages/protocol'];
     await writeFile(packScript,`#!/bin/bash
@@ -86,12 +94,15 @@ ${displayCommand(['tar','-cf',archive,'-C',root,...packageFiles])}
     const bundle=await readFile(archive);
     const revision=createHash('sha256').update(bundle).digest('hex').slice(0,20);
     const runtime=remoteRuntime(revision);
+    if(goWorker) await run('tar',['-rf',archive,'-C',dir,goWorker.name],{timeout:15000});
+    if((await stat(archive)).size>32*1024*1024)throw new Error('Backend bundle exceeds 32 MB.');
     const install=`"$HOME/${runtime.install}"`;
     const bootstrap=`
     set -eux
     umask 077
     echo REMOTEPAD2_PHASE=Checking\ remote\ backend >&2
     export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:/opt/homebrew/bin:/usr/local/bin:$PATH"
+    ${goWorker ? goBootstrap(goWorker.name,runtime.channel,goWorker.revision) : ''}
     command -v node >/dev/null || { echo 'Node.js 22+ is required in non-interactive SSH PATH.' >&2; exit 1; }
     node -e 'if(Number(process.versions.node.split(".")[0])<22)process.exit(1)' || { echo 'Node.js 22+ is required.' >&2; exit 1; }
     mkdir -p "$HOME/.remotepad2/backend/${runtime.channel}"
@@ -151,7 +162,13 @@ trap 'code=$?; printf "%s\\n" "$code" > ${displayCommand([result])}' EXIT
 ${ssh} < ${displayCommand([archive])} | tee ${displayCommand([output])}
 uid=$(sed -n 's/^REMOTEPAD2_UID=\\([0-9]*\\)$/\\1/p' ${displayCommand([output])} | tail -1)
 test -n "$uid"
-${master} "${transport.socket}:${runtime.socketDirectory.replace('$(id -u)','$uid')}/api.sock" -- ${displayCommand([host])}
+revision=$(sed -n 's/^REMOTEPAD2_REVISION=\\([a-f0-9]\\{20\\}\\)$/\\1/p' ${displayCommand([output])} | tail -1)
+case "$revision" in
+  '') revision=${revision} ;;
+  ${goWorker?.revision ?? revision}) ;;
+  *) exit 1 ;;
+esac
+${master} "${transport.socket}:/tmp/rp2-$uid-${runtime.channel}-$revision/api.sock" -- ${displayCommand([host])}
 `,{mode:0o700});
     if(job.cancelled || !job.session.info.alive)throw new Error('Connection terminal was closed.');
     phase(input,'SSH login');

@@ -2,6 +2,29 @@
 
 Terminal-first web workbench, developed in this repository on dev.
 
+## Development location and handoff (2026-11-26)
+
+- Active development moves to **xtia**. The MacBook Air is an update/run client:
+  pull completed changes there; do not use it for feature edits, Docker matrices
+  or development test runs. This handoff's documentation is the final local wrap-up.
+- Canonical repository: https://github.com/fkwai/remotePad2, branch **dev**.
+  The older https://github.com/fkwai/remotePad is reference material; its final
+  local SSH changes were preserved on its dev branch at a54d0db.
+- Start on xtia by reading this file and [the development handoff](docs/XTIA_DEVELOPMENT.md).
+  [The standalone handoff prompt](docs/XTIA_HANDOFF_PROMPT.md) can seed a new chat.
+- For agent-made dev changes, passing PR CI authorizes merging into **dev**
+  without another user confirmation. Publishing **main** needs an explicit
+  release request. Merging/pulling does not authorize restarting live processes.
+- The frontend, local backend and gateway use **TypeScript/Node**. The remote
+  worker in `apps/worker` uses Go on Linux amd64 and arm64. Preserve the
+  browser/API/PTY contract and keep agent runtimes external.
+- Build independent Docker test environments on xtia. Never stop or repurpose
+  existing CatsCo containers, use real credentials as fixtures, or expose this
+  unauthenticated workbench publicly. CI and Docker tests need isolated HOME,
+  session state and ports. Existing user shells must keep running.
+
+## Product map
+
 - Browser UI lives in apps/web. PTY and process ownership live in apps/server.
 - Shared transport types live in packages/protocol.
 - Default local ports are 6020 (built app/API) and 6021 (Vite development).
@@ -124,8 +147,10 @@ Terminal-first web workbench, developed in this repository on dev.
 - SSH parsing accepts a config alias, user@host, or ssh with -p/-i/-J.
   Arguments go directly to OpenSSH; arbitrary remote commands are rejected.
 - ssh.ts installs a versioned API backend under ~/.remotepad2/backend/<channel>/<revision> on the
-  target. Target prerequisites are POSIX/OpenSSH and Node.js 22+ with npm. Missing or
-  mismatched pnpm is bootstrapped at the version in package.json into
+  target. On Linux amd64/arm64, it sends a CI-built Go worker that needs no
+  Node or pnpm on the target. The Node fallback covers unsupported targets,
+  active remote Codex App IPC, and unavailable Go artifacts. Missing or
+  mismatched pnpm for the fallback is bootstrapped at the version in package.json into
   ~/.remotepad2/tools, without changing global tools or shell configuration.
   A persistent private Unix-socket backend owns remote PTYs; SSH is transport.
   Local health probes allow 5 seconds per request (jump RTT can exceed 500ms),

@@ -3,6 +3,12 @@
 A terminal-first web workbench. Open a browser and work in a real shell.
 Future plugins can open panels for files, agents and live debugging.
 
+Development now takes place on **xtia**; the MacBook Air only pulls completed
+changes and runs the app. Use the **dev** branch (the default main branch is
+the stable release). Read the [development handoff](docs/XTIA_DEVELOPMENT.md)
+or copy the [standalone handoff prompt](docs/XTIA_HANDOFF_PROMPT.md).
+The current backend is Node/TypeScript; a Go backend is a future direction.
+
 ## Run
 
 Requires Node.js 22+ and pnpm 10.

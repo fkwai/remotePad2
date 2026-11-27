@@ -79,13 +79,18 @@ export async function registerSshRoutes(app: FastifyInstance, home = os.homedir(
     router.all<{ Params: { host: string } }>('/api/ssh/:host/proxy/*', async (req, reply) => {
       const path = '/api/' + req.url.split('/proxy/').slice(1).join('/proxy/');
       if (!workerPath.test(path)) return reply.code(404).send({ error: 'Remote operation unavailable.' });
+      const preview = path.startsWith('/api/preview/');
+      if (preview && !previewRequest(req)) return reply.code(404).send({ error: 'Preview unavailable.' });
       const socketPath = socketFor(req.params.host);
       if (!socketPath) return reply.code(503).send({ error: 'SSH disconnected. Reconnect from the SSH menu.' });
       const body = req.body === undefined ? undefined : JSON.stringify(req.body);
       return new Promise<void>((resolve) => {
         const upstream = request({
           socketPath, path, method: req.method,
-          headers: body === undefined ? {} : { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) },
+          headers: {
+            ...(body === undefined ? {} : { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) }),
+            ...(preview ? { 'x-remotepad2-preview-key': path.split('/')[3] } : {}),
+          },
         }, (res) => {
           reply.code(res.statusCode || 502);
           for (const name of ['content-type', 'content-length', 'content-disposition', 'cache-control', 'content-security-policy', 'x-content-type-options']) {
