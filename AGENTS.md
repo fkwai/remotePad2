@@ -2,11 +2,12 @@
 
 Terminal-first web workbench, developed in this repository on dev.
 
-## Development location and handoff (2026-11-26)
+## Development location (updated 2026-11-27)
 
-- Active development moves to **xtia**. The MacBook Air is an update/run client:
-  pull completed changes there; do not use it for feature edits, Docker matrices
-  or development test runs. This handoff's documentation is the final local wrap-up.
+- The user explicitly resumed development in this local conversation on
+  2026-11-27, overriding the earlier xtia-only handoff. Local feature work and
+  isolated tests are authorized again. Use a separate worktree, never restart
+  the running user install for development. xtia remains available for testing.
 - Canonical repository: https://github.com/fkwai/remotePad2, branch **dev**.
   The older https://github.com/fkwai/remotePad is reference material; its final
   local SSH changes were preserved on its dev branch at a54d0db.
@@ -83,6 +84,21 @@ Terminal-first web workbench, developed in this repository on dev.
 
 - Files Index uses expandable folders, Favorites and Repos. Initial pins are
   imported from ~/.remotepad; subsequent edits live in ~/.remotepad2/navigation.json.
+- Sessions Index is the agent session manager. Its + opens a launcher for
+  Shell, Codex, Claude Code or Custom CLI with name, working directory and
+  project label. The terminal icon creates a shell in the selected directory.
+  Search and agent/process filters cover managed sessions; Codex history
+  remains a separate resumable section. Rows show agent/project/machine and
+  process liveness (not inferred thinking/approval state). Newest sessions sort
+  first; unchanged polls preserve row DOM. Right-click session or Terminal tab
+  offers Open / Rename / Close (Codex App offers Detach, retains native title).
+  Rename uses PATCH /api/sessions/:id and survives browser refresh; custom
+  names must not be overwritten by Codex metadata refresh.
+- POST /api/sessions accepts agent/name/cwd/project/command plus legacy codexId.
+  Local Node and Linux Go worker share the launch/rename metadata contract.
+  Custom commands parse quoted argv without shell expansion; use an explicit
+  shell when needed. Agents are installed/authenticated externally; do not
+  change agent approval settings or install CLIs automatically.
 - Sessions Index reads Codex metadata using read-only SQLite with the JSONL
   index as fallback. Prefer the custom name and show its project name (cwd
   folder as fallback).

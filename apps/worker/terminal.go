@@ -21,12 +21,17 @@ import (
 )
 
 type sessionInfo struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Cwd      string `json:"cwd"`
-	CodexID  string `json:"codexId,omitempty"`
-	Alive    bool   `json:"alive"`
-	ExitCode *int   `json:"exitCode,omitempty"`
+	Agent     string `json:"agent,omitempty"`
+	Project   string `json:"project,omitempty"`
+	Machine   string `json:"machine,omitempty"`
+	CreatedAt int64  `json:"createdAt,omitempty"`
+	Renamed   bool   `json:"renamed,omitempty"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Cwd       string `json:"cwd"`
+	CodexID   string `json:"codexId,omitempty"`
+	Alive     bool   `json:"alive"`
+	ExitCode  *int   `json:"exitCode,omitempty"`
 }
 
 type terminalEvent struct {
@@ -75,7 +80,7 @@ func shell() string {
 	return "/bin/sh"
 }
 
-func (t *terminals) create(home string, codex codexSession) (sessionInfo, error) {
+func (t *terminals) create(home string, codex codexSession, options sessionRequest) (sessionInfo, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.closed {
@@ -91,14 +96,15 @@ func (t *terminals) create(home string, codex codexSession) (sessionInfo, error)
 			}
 		}
 	}
-	info := sessionInfo{ID: rand.Text(), Name: "Shell", Cwd: home, Alive: true}
-	var cmd *exec.Cmd
-	if codex.ID == "" {
-		cmd = exec.Command(shell(), "-l")
-	} else {
-		cmd = exec.Command("codex", "resume", codex.ID, "--no-alt-screen")
-		info.Name, info.Cwd, info.CodexID = codex.Title, codex.Cwd, codex.ID
+	plan, err := planSession(home, options, codex)
+	if err != nil {
+		return sessionInfo{}, err
 	}
+	info := plan.info
+	info.ID = rand.Text()
+	info.Alive = true
+	info.CreatedAt = time.Now().UnixMilli()
+	cmd := exec.Command(plan.command[0], plan.command[1:]...)
 	cmd.Dir = info.Cwd
 	cmd.Env = append(cmd.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
 	file, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: 80, Rows: 24})
@@ -321,7 +327,7 @@ func (w *worker) registerTerminals(mux *http.ServeMux) {
 		reply(out, 200, map[string]any{"sessions": infos})
 	})
 	mux.HandleFunc("POST /api/sessions", func(out http.ResponseWriter, req *http.Request) {
-		var payload struct{ CodexID string }
+		var payload sessionRequest
 		if req.ContentLength != 0 && !body(out, req, 65536, &payload) {
 			return
 		}
@@ -334,11 +340,35 @@ func (w *worker) registerTerminals(mux *http.ServeMux) {
 				return
 			}
 		}
-		info, err := t.create(w.home, codex)
+		info, err := t.create(w.home, codex, payload)
 		if err != nil {
 			fail(out, 400, err)
 			return
 		}
+		reply(out, 200, info)
+	})
+	mux.HandleFunc("PATCH /api/sessions/{id}", func(out http.ResponseWriter, req *http.Request) {
+		var payload struct{ Name string }
+		if !body(out, req, 65536, &payload) {
+			return
+		}
+		name := strings.TrimSpace(payload.Name)
+		if name == "" || utf8.RuneCountInString(payload.Name) > 160 || strings.ContainsAny(name, "\x00\r\n") {
+			fail(out, 400, errors.New("Enter a session name (up to 160 characters)."))
+			return
+		}
+		t.mu.Lock()
+		s := t.sessions[req.PathValue("id")]
+		t.mu.Unlock()
+		if s == nil {
+			fail(out, 404, errors.New("Session unavailable."))
+			return
+		}
+		s.mu.Lock()
+		s.info.Name = name
+		s.info.Renamed = true
+		info := s.info
+		s.mu.Unlock()
 		reply(out, 200, info)
 	})
 	mux.HandleFunc("DELETE /api/sessions/{id}", func(out http.ResponseWriter, req *http.Request) {

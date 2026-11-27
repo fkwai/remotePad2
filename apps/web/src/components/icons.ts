@@ -1,4 +1,4 @@
-export type IconKind = 'layout' | 'refresh' | 'search' | 'favorite' | 'repo' | 'folder' | 'hidden' | 'chevron' | 'file' | 'trash' | 'connect' | 'disconnect' | 'open';
+export type IconKind = 'layout' | 'refresh' | 'search' | 'favorite' | 'repo' | 'folder' | 'hidden' | 'chevron' | 'file' | 'trash' | 'connect' | 'disconnect' | 'open' | 'plus' | 'terminal';
 export function iconControl(control: HTMLButtonElement, label: string, kind: IconKind) {
   control.replaceChildren();
   control.classList.add('icon-button'); control.title = label; control.setAttribute('aria-label', label);
@@ -20,6 +20,8 @@ export function iconControl(control: HTMLButtonElement, label: string, kind: Ico
       chevron:'m7 5 5 5-5 5',
       connect:'M7 2v4M13 2v4M5 6h10v2a5 5 0 0 1-10 0ZM10 13v5',
       disconnect:'M7 2v4M13 2v4M5 6h10v2a5 5 0 0 1-3 4.6M10 15v3M2 2l16 16',
+      plus:'M10 3v14M3 10h14',
+      terminal:'M2 3h16v14H2Zm3 4 3 3-3 3m6 0h4',
       open:'M11 3h6v6M17 3l-9 9M8 4H3v13h13v-5',
       trash:'M3 5h14M8 2h4l1 3M5 5l1 13h8l1-13M8 8v7M12 8v7',
       file:'M5 2h7l4 4v12H5ZM12 2v5h4M8 11h5M8 14h5',
