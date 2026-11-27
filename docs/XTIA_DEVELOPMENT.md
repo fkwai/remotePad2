@@ -1,5 +1,7 @@
 # RemotePad2 → xtia 开发交接
 
+> 2026-11-27 更新：用户已授权在本地独立 worktree 继续开发；最新约定见 [AGENTS.md](../AGENTS.md)。Linux Go 远端 worker 也已通过 PR #2 合入 dev。下方保留交接时的历史记录。
+
 交接日期：2026-11-26。
 
 ## 仓库和工作位置

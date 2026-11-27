@@ -256,3 +256,25 @@ button.icon-button { display: inline-flex; align-items: center; justify-content:
 .ssh-config-row > button:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .ssh-manager .ssh-config-row > button.icon-button { width: 28px; flex: 0 0 28px; }
 .ssh-manager .ssh-form-actions > button.icon-button { width: 28px; flex: 0 0 28px; }
+
+.session-heading { display: flex; align-items: center; gap: 3px; }
+.session-heading h2 { flex: 1; }
+.index .session-heading > button.icon-button { width: 28px; }
+.session-filters { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 5px; margin-bottom: 8px; }
+.session-filters select, .session-create select { min-width: 0; width: 100%; background: #202428; border: 1px solid #41494f; color: inherit; font: inherit; padding: 6px; }
+.session-create { border: 1px solid #41494f; border-radius: 5px; padding: 8px; margin-bottom: 10px; }
+.session-create label { display: block; color: #a7afb6; font-size: 11px; margin-bottom: 6px; }
+.session-create label > input, .session-create label > select { display: block; margin: 4px 0 0; }
+.session-create small { display: block; color: #8e999f; font-size: 10px; line-height: 1.5; }
+.session-create-actions { display: flex; gap: 5px; margin-top: 5px; }
+.index .session-create-actions > button { width: 28px; }
+.index .session-row { display: block; border: 1px solid transparent; border-radius: 5px; padding: 8px; margin: 3px 0; }
+.session-row.active { border-color: #436354; background: #7ee0c50a; }
+.session-title { display: block; font-weight: 550; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.agent-tag, .session-state { display: inline-block; margin-top: 5px; font-size: 10px; color: #8e999f; }
+.agent-tag { margin-right: 8px; color: #a8bfdc; }
+.session-details { display: flex; gap: 5px; margin-top: 4px; font-size: 10px; color: #8e999f; }
+.session-details > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-state.live { color: #8ad3b4; }
+.session-empty { color: #8e999f; font-size: 11px; padding: 6px; }
+.sessions-index .index-modes > .icon-button { width: 28px; margin-left: auto; }

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="680" viewBox="0 0 1280 680" role="img" aria-labelledby="title description">
+<title id="title">RemotePad2 — a browser workspace for agent sessions</title>
+<desc id="description">Interface schematic showing files, an editor, a terminal, and a session manager with Codex and Claude Code sessions on the selected machine.</desc>
+<defs><style>text{font-family:Inter,system-ui,sans-serif;fill:#dbe3e9}.muted{fill:#8795a4}.tiny{font-size:12px}.small{font-size:14px}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:15px}.accent{fill:#8ee1c1}.title{font-size:16px;font-weight:600}</style></defs>
+<rect width="1280" height="680" rx="16" fill="#0d1117"/>
+<rect x="24" y="24" width="1232" height="610" rx="10" fill="#15191f" stroke="#34414d"/>
+<path d="M24 72h1232M246 72v562M982 72v562M246 354h736" stroke="#34414d"/>
+<rect x="44" y="43" width="10" height="10" rx="3" fill="#8ee1c1"/>
+<text x="65" y="54" class="title">RemotePad2</text><rect x="188" y="36" width="48" height="26" rx="6" fill="#24332e"/>
+<text x="201" y="54" class="tiny accent">dev</text><text x="1120" y="54" class="small muted">SSH · worker-a</text>
+<text x="44" y="106" class="title">Files</text><text x="44" y="140" class="small accent">★ Favorites</text>
+<text x="44" y="173" class="small">⌄ workspace</text><text x="62" y="204" class="small">⌄ api</text><text x="82" y="235" class="small muted">server.go</text>
+<text x="62" y="266" class="small">⌄ docs</text><rect x="31" y="279" width="208" height="32" rx="4" fill="#25362f"/>
+<text x="82" y="300" class="small accent">README.md</text><text x="62" y="334" class="small muted">package.json</text>
+<text x="268" y="101" class="small accent">README.md</text><path d="M246 115h736" stroke="#29343f"/>
+<text x="278" y="160" style="font-size:28px;font-weight:650">One workspace. Many sessions.</text>
+<text x="278" y="198" class="small muted">Keep each agent in its own terminal, project and working directory.</text>
+<text x="278" y="245" class="mono accent">Files  +  Editor  +  Terminal  +  Sessions</text>
+<text x="278" y="288" class="small muted">Rich previews when you need them. Real shell interaction throughout.</text>
+<text x="262" y="339" class="tiny muted">&lt;/&gt; Source / Render</text>
+<rect x="258" y="365" width="164" height="28" rx="4" fill="#25362f"/>
+<text x="270" y="384" class="small accent">API refactor</text><text x="445" y="384" class="small muted">Docs review</text>
+<path d="M246 402h736" stroke="#29343f"/>
+<text x="270" y="437" class="mono muted">~/workspace/api</text>
+<text x="270" y="469" class="mono"><tspan class="accent">$ </tspan>codex --no-alt-screen</text>
+<text x="270" y="511" class="mono muted">An interactive CLI, using your own agent configuration.</text>
+<text x="270" y="565" class="mono accent">› </text><rect x="291" y="550" width="9" height="20" fill="#8ee1c1"/>
+<text x="1002" y="106" class="title">Sessions</text><text x="1219" y="107" style="font-size:22px" class="accent">+</text>
+<rect x="1000" y="123" width="238" height="30" rx="5" fill="#1d252e" stroke="#34414d"/><text x="1011" y="143" class="tiny muted">Search sessions…</text>
+<rect x="999" y="171" width="240" height="112" rx="7" fill="#1d2b26" stroke="#456858"/>
+<text x="1012" y="196" class="small">API refactor</text><text x="1012" y="220" class="tiny accent">Codex</text>
+<text x="1012" y="244" class="tiny muted">api · worker-a</text><circle cx="1016" cy="265" r="3" fill="#8ee1c1"/><text x="1027" y="269" class="tiny accent">Running</text>
+<rect x="999" y="295" width="240" height="112" rx="7" fill="#1a2129"/>
+<text x="1012" y="320" class="small">Docs review</text><text x="1012" y="344" class="tiny" fill="#b9b0e7">Claude Code</text>
+<text x="1012" y="368" class="tiny muted">docs · worker-a</text><circle cx="1016" cy="389" r="3" fill="#8ee1c1"/><text x="1027" y="393" class="tiny accent">Running</text>
+<path d="M1001 432h236" stroke="#34414d"/><text x="1012" y="459" class="small muted">Codex history</text>
+<text x="1012" y="490" class="small">Continue an earlier conversation</text><text x="1012" y="514" class="tiny muted">Your title · your project</text>
+<text x="640" y="661" text-anchor="middle" class="tiny muted">Workbench layout schematic · real PTYs, external agent CLIs, local or SSH workspaces</text>
+</svg>

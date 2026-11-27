@@ -3,7 +3,7 @@ import { initializeWindow, startWindowSave } from './windows';
 import { menu } from './components/menu';
 import { Layout } from './components/layout';
 import { workspaceMenu, versionMenu } from './components/workspaces';
-import type { FileContent, SessionInfo } from '@remotepad2/protocol';
+import type { FileContent, SessionInfo, SessionCreate } from '@remotepad2/protocol';
 import { api, button } from './api';
 import { workspaceKey, sshTarget } from './connection';
 import { connectionsButton } from './components/connections';
@@ -60,6 +60,7 @@ function renderTerminals() {
     const remoteUrl=terminals.get(id)?.remoteUrl;
     if(remoteUrl){const link=document.createElement('a');link.href=remoteUrl;link.target='_blank';link.rel='noopener';link.textContent='↗';link.title='Open remote workspace';link.setAttribute('aria-label','Open remote workspace');tab.append(link);}
     tab.append(close);
+    tab.oncontextmenu=event=>menu(event,[{label:'Open',action:()=>openSession(info)},...(info.kind!=='codex-app'?[{label:'Rename',action:()=>{void renameSession(info).catch(reason=>status(reason.message));}}]:[]),{label:info.kind==='codex-app'?'Detach':'Close session',action:()=>void closeSession(id)}]);
     return tab;
   });
   get('terminal-tabs').replaceChildren(...tabs, button('+', () => void createSession(), 'New shell'));
@@ -94,9 +95,24 @@ async function closeSession(id: string) {
     renderTerminals();
   } catch (error) { status((error as Error).message); }
 }
+async function launchSession(options:SessionCreate={}) {
+  const info=await api<SessionInfo>('/api/sessions',{method:'POST',body:JSON.stringify(options)});
+  if(options.agent && options.agent!=='shell' && info.agent!==options.agent){
+    await api('/api/sessions/'+encodeURIComponent(info.id),{method:'DELETE'});
+    throw new Error('Update and restart the selected backend to launch agent sessions.');
+  }
+  await refresh();openSession(info);
+}
 async function createSession() {
-  try { const info = await api<SessionInfo>('/api/sessions', { method: 'POST' }); await refresh(); openSession(info); }
-  catch (error) { status((error as Error).message); }
+  try {await launchSession({cwd:localStorage.getItem(workspaceKey('directory'))||undefined});}
+  catch(error){status((error as Error).message);}
+}
+async function renameSession(info:SessionInfo){
+  const name=prompt('Session name',info.name);if(name===null)return;
+  const route='/api/sessions/'+encodeURIComponent(info.id);
+  const updated=info.kind==='ssh-connect'?await localFetch(route,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}).then(async r=>{const value=await r.json();if(!r.ok)throw new Error(value.error);return value as SessionInfo;}):await api<SessionInfo>(route,{method:'PATCH',body:JSON.stringify({name})});
+  const terminal=terminals.get(info.id);if(terminal)terminal.info=updated;
+  sessionList=sessionList.map(row=>row.id===info.id?updated:row);renderTerminals();
 }
 function syncEditor(path: string, from: EditorPanel) {
   const state = from.snapshot();
@@ -190,17 +206,17 @@ function openFolder(directory: string) {
   layout();
 }
 const files = new FilesIndex((path) => void openFile(path), (path) => localStorage.setItem(workspaceKey('directory'), path), openFolder);
-const sessions = new SessionsIndex(openSession, () => void createSession(), async (codexId) => {
+const sessions = new SessionsIndex({open:openSession,createShell:()=>void createSession(),launch:launchSession,rename:renameSession,close:info=>closeSession(info.id),directory:()=>localStorage.getItem(workspaceKey('directory'))||'',resume:async (codexId) => {
   const info = await api<SessionInfo>('/api/sessions', { method: 'POST', body: JSON.stringify({ codexId }) });
   await refresh();
   openSession(info);
-}, (metadata) => {
+}, metadata:(metadata) => {
   for (const terminal of terminals.values()) {
     const info = metadata.find((session) => session.id === terminal.info.codexId);
-    if (info) terminal.info.name = info.title;
+    if (info && !terminal.info.renamed) terminal.info.name = info.title;
   }
   renderTerminals();
-});
+}});
 get('files-index').append(files.element);
 get('sessions-index').append(sessions.element);
 async function refresh() {

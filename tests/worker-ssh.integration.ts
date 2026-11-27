@@ -51,9 +51,12 @@ test('SSH installs and reattaches to the Go worker over a private forward', {tim
     assert.equal(health.runtime, 'go');
     assert.equal(health.channel, 'dev');
     assert.equal((await (await fetch(proxy + '/files')).json()).path, targetHome);
-    const created = await (await fetch(proxy + '/sessions', {method: 'POST'})).json();
+    const created = await (await fetch(proxy + '/sessions', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agent:'custom',command:'/bin/sh',name:'Remote tool',project:'SSH contract',cwd:targetHome})})).json();
     assert.equal(created.cwd, targetHome);
     assert.equal(created.alive, true);
+    assert.equal(created.agent,'custom');assert.equal(created.project,'SSH contract');assert.ok(created.machine);
+    const renamed=await (await fetch(proxy+'/sessions/'+created.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Remote task'})})).json();
+    assert.equal(renamed.name,'Remote task');assert.equal(renamed.alive,true);
     viewer = new WebSocket(url.replace('http:', 'ws:') + '/ws/ssh/' + host + '/terminal/' + created.id);
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Remote PTY did not return shell output.')), 6000);
@@ -91,7 +94,8 @@ test('SSH installs and reattaches to the Go worker over a private forward', {tim
     const reconnected = await (await fetch(proxy + '/health')).json();
     assert.equal(reconnected.pid, health.pid);
     const listed = await (await fetch(proxy + '/sessions')).json();
-    assert.equal(listed.sessions.find((session: {id: string}) => session.id === created.id)?.alive, true);
+    const restored=listed.sessions.find((session:{id:string})=>session.id===created.id);
+    assert.equal(restored?.alive,true);assert.equal(restored?.name,'Remote task');assert.equal(restored?.agent,'custom');
     assert.equal((await fetch(proxy + '/sessions/' + created.id, {method: 'DELETE'})).status, 200);
   } finally {
     viewer?.terminate();

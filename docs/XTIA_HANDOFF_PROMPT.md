@@ -1,5 +1,7 @@
 # 在 xtia 开启下一段开发时，复制以下 prompt
 
+> 2026-11-27 更新：用户已授权在本地独立 worktree 继续开发；最新约定见 [AGENTS.md](../AGENTS.md)。Linux Go 远端 worker 也已通过 PR #2 合入 dev。下方保留交接时的历史记录。
+
 ```text
 请接手 RemotePad2，之后所有开发、构建和 Docker 环境测试都放在 xtia。
 我的 MacBook Air 仅拉取已经开发好的东西并运行，不再当开发/测试机。
