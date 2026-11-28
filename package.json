@@ -1,7 +1,7 @@
 {
   "name": "remotepad2",
   "private": true,
-  "version": "0.1.0-nightly.20261127",
+  "version": "0.1.0-nightly.20261128",
   "type": "module",
   "packageManager": "pnpm@10.15.0",
   "engines": {
@@ -24,7 +24,7 @@
     "typescript": "^5.9.2"
   },
   "remotepad2Build": {
-    "source": "03385426ae63fe83102f9ea34ccdf62489424019",
-    "date": "20261127"
+    "source": "1b5ef399185a6040ce28594742d95b1e28131a2e",
+    "date": "20261128"
   }
 }

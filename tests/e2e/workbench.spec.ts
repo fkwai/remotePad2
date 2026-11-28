@@ -361,7 +361,7 @@ test('SSH manager refreshes connection state and opens an already connected mach
   await expect(row.getByRole('button',{name:'Disconnect',exact:true})).toBeVisible();
   await page.route('**/api/ssh/disconnect',route=>route.fulfill({status:502,json:{error:'Test disconnect failed'}}));
   await row.getByRole('button',{name:'Disconnect',exact:true}).click();
-  await expect(page.getByRole('alert')).toContainText('Test disconnect failed');
+  await expect(page.locator('#host').getByRole('alert')).toContainText('Test disconnect failed');
   await expect(row.getByRole('button',{name:'Disconnect',exact:true})).toBeEnabled();
   await row.getByRole('button',{name:'Remove saved machine Connected cloud',exact:true}).click();
   await expect(page.getByRole('button',{name:'Remove saved machine Connected cloud',exact:true})).toHaveCount(0);
@@ -399,4 +399,57 @@ test('SSH favorite icons stay clickable beside scrollbars and long aliases',asyn
     await pin.click({trial:true});
   }
   await page.screenshot({path:path.join(root,'ssh-icons-scrollbar.png')});
+});
+
+test('agent sessions launch in their project, filter, rename and survive a browser reload',async({page,request})=>{
+  await browse(page);
+  const command=`/bin/sh -c 'printf "AGENT_READY\\n"; while IFS= read -r line; do printf "AGENT_REPLY:%s\\n" "$line"; done'`;
+  const launch=async(name:string,project:string)=>{
+    await page.getByRole('button',{name:'New session',exact:true}).click();
+    await page.getByRole('combobox',{name:'Agent type',exact:true}).selectOption('custom');
+    await page.getByRole('textbox',{name:'Session name',exact:true}).fill(name);
+    await page.getByRole('textbox',{name:'Working directory',exact:true}).fill(repo);
+    await page.getByRole('textbox',{name:'Project label',exact:true}).fill(project);
+    await page.getByRole('textbox',{name:'CLI command',exact:true}).fill(command);
+    await page.getByRole('button',{name:'Start session',exact:true}).click();
+    await expect(page.getByRole('form',{name:'Create session',exact:true})).toBeHidden();
+    await expect(page.locator('.terminal-body:not([hidden]) .xterm-screen')).toContainText('AGENT_READY');
+  };
+  await launch('API refactor','Demo API');await launch('Docs review','Docs');
+  const row=(name:string)=>page.locator('.session-row').filter({has:page.locator('.session-title',{hasText:name})});
+  await expect(row('API refactor')).toContainText('Demo API');await expect(row('Docs review')).toContainText('Docs');
+  await expect(row('API refactor').locator('.machine-tag')).not.toHaveText('');
+  await page.getByRole('searchbox',{name:'Search sessions',exact:true}).fill('Demo API');
+  await expect(row('API refactor')).toBeVisible();await expect(row('Docs review')).toHaveCount(0);
+  await page.getByRole('searchbox',{name:'Search sessions',exact:true}).fill('');
+  await page.getByRole('combobox',{name:'Filter agent',exact:true}).selectOption('claude');await expect(page.locator('.session-row')).toHaveCount(0);
+  await page.getByRole('combobox',{name:'Filter agent',exact:true}).selectOption('custom');await expect(page.locator('.session-row')).toHaveCount(2);
+  await row('API refactor').click();
+  const terminal=page.locator('.terminal-body:not([hidden])');await terminal.locator('.xterm-helper-textarea').focus();await page.keyboard.type('hello');await page.keyboard.press('Enter');
+  await expect(terminal.locator('.xterm-screen')).toContainText('AGENT_REPLY:hello');
+  await row('API refactor').click({button:'right'});page.once('dialog',dialog=>dialog.accept('Backend task'));
+  await page.getByRole('menuitem',{name:'Rename',exact:true}).click();await expect(row('Backend task')).toBeVisible();
+  await page.reload();await expect(row('Backend task')).toContainText('Running');await expect(row('Docs review')).toContainText('Running');
+  await row('Backend task').click();await expect(page.locator('.terminal-body:not([hidden]) .xterm-screen')).toContainText('AGENT_REPLY:hello');
+  await page.screenshot({path:path.join(root,'agent-session-manager.png')});
+  await row('Docs review').click({button:'right'});await page.getByRole('menuitem',{name:'Close session',exact:true}).click();
+  await expect(row('Docs review')).toHaveCount(0);await expect(row('Backend task')).toContainText('Running');
+  const list=(await(await request.get('/api/sessions')).json()).sessions;
+  expect(list.find((s:any)=>s.name==='Backend task')?.alive).toBe(true);
+});
+
+
+test('an older backend cannot silently turn an agent launch into a plain shell',async({page})=>{
+ await page.goto('/');await expect(page.locator('.xterm')).toBeVisible();
+ await page.route('**/api/sessions',async route=>{
+  if(route.request().method()==='POST'&&route.request().postDataJSON()?.agent==='custom'){
+   const response=await route.fetch({postData:'{}'});await route.fulfill({response});
+  }else await route.continue();
+ });
+ await page.getByRole('button',{name:'New session',exact:true}).click();
+ await page.getByRole('combobox',{name:'Agent type',exact:true}).selectOption('custom');
+ await page.getByRole('textbox',{name:'CLI command',exact:true}).fill('/bin/sh');
+ await page.getByRole('button',{name:'Start session',exact:true}).click();
+ await expect(page.getByLabel('Sessions Index',{exact:true}).getByRole('alert')).toContainText('Update and restart the selected backend');
+ await expect(page.getByRole('form',{name:'Create session',exact:true})).toBeVisible();
 });
